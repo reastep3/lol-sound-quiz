@@ -12,7 +12,7 @@ const CONFIG = {
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
       return 'ws://localhost:8080';
     }
-    return 'wss://lol-sound-quiz-server.onrender.com';
+    return 'wss://lol-sound-quiz.onrender.com';
   })(),
 };
 
