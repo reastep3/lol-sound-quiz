@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoL Sound Quiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Beaufort+for+LOL:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Loading -->
+        <div id="loading-screen" class="screen active">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading champion data...</p>
+        </div>
+
+        <!-- Start Screen -->
+        <section id="start-screen" class="screen">
+            <div class="container">
+                <div class="hero">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 64 64" width="64" height="64">
+                            <circle cx="32" cy="32" r="28" fill="none" stroke="#c89b3c" stroke-width="2"/>
+                            <path d="M20 22 L32 18 L44 22 L44 38 L32 46 L20 38Z" fill="none" stroke="#c89b3c" stroke-width="2" stroke-linejoin="round"/>
+                            <circle cx="32" cy="32" r="6" fill="#c89b3c" opacity="0.3"/>
+                            <circle cx="32" cy="32" r="3" fill="#c89b3c"/>
+                        </svg>
+                    </div>
+                    <h1 class="title">LoL Sound Quiz</h1>
+                    <p class="subtitle">Can you identify champion abilities by their sound?</p>
+                </div>
+
+                <div class="card how-it-works">
+                    <h3>How It Works</h3>
+                    <div class="steps">
+                        <div class="step">
+                            <span class="step-num">1</span>
+                            <span>Listen to the ability sound effect</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">2</span>
+                            <span>Type the champion's name</span>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">3</span>
+                            <span>Select the ability key (Passive / Q / W / E / R)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card scoring-info">
+                    <h3>Scoring</h3>
+                    <div class="score-rules">
+                        <div class="score-rule">
+                            <span class="score-badge perfect">+2</span>
+                            <span>Champion + Ability correct</span>
+                        </div>
+                        <div class="score-rule">
+                            <span class="score-badge partial">+1</span>
+                            <span>Champion correct, wrong ability</span>
+                        </div>
+                        <div class="score-rule">
+                            <span class="score-badge wrong">+0</span>
+                            <span>Wrong champion</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quiz-options">
+                    <label class="option-label">Questions</label>
+                    <div class="option-buttons" id="length-options">
+                        <button class="option-btn" data-value="5">5</button>
+                        <button class="option-btn active" data-value="10">10</button>
+                        <button class="option-btn" data-value="20">20</button>
+                    </div>
+                </div>
+
+                <button id="start-btn" class="btn btn-primary btn-lg">
+                    Start Quiz
+                </button>
+
+                <p class="demo-note">
+                    Real ability SFX from Riot's official ability previews.
+                    117 abilities across 52 champions.
+                </p>
+            </div>
+        </section>
+
+        <!-- Quiz Screen -->
+        <section id="quiz-screen" class="screen">
+            <div class="container">
+                <!-- Header -->
+                <div class="quiz-header">
+                    <div class="quiz-progress-info">
+                        <span id="question-counter">Question 1 / 10</span>
+                        <span id="score-display">Score: 0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                </div>
+
+                <!-- Sound Player -->
+                <div class="card sound-player" id="sound-player">
+                    <button class="play-btn" id="play-btn" title="Play Sound">
+                        <svg class="play-icon" viewBox="0 0 24 24" width="32" height="32">
+                            <polygon points="6,4 20,12 6,20" fill="currentColor"/>
+                        </svg>
+                        <svg class="pause-icon" viewBox="0 0 24 24" width="32" height="32" style="display:none">
+                            <rect x="5" y="4" width="4" height="16" fill="currentColor"/>
+                            <rect x="15" y="4" width="4" height="16" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <div class="waveform" id="waveform">
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                    </div>
+                    <span class="play-count" id="play-count">Click to play</span>
+                </div>
+
+                <!-- Answer Form -->
+                <div class="answer-form">
+                    <div class="input-group">
+                        <label for="champion-input">Champion</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="champion-input" placeholder="Type champion name..." autocomplete="off" spellcheck="false">
+                            <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Ability</label>
+                        <div class="ability-buttons" id="ability-buttons">
+                            <button class="ability-btn" data-key="Passive">P</button>
+                            <button class="ability-btn" data-key="Q">Q</button>
+                            <button class="ability-btn" data-key="W">W</button>
+                            <button class="ability-btn" data-key="E">E</button>
+                            <button class="ability-btn" data-key="R">R</button>
+                        </div>
+                    </div>
+
+                    <button id="submit-btn" class="btn btn-primary" disabled>
+                        Submit Answer
+                    </button>
+
+                    <button id="skip-btn" class="btn btn-ghost">
+                        Skip
+                    </button>
+                </div>
+
+                <!-- Feedback Overlay -->
+                <div class="feedback-overlay" id="feedback-overlay">
+                    <div class="feedback-card" id="feedback-card">
+                        <div class="feedback-icon" id="feedback-icon"></div>
+                        <h2 id="feedback-title"></h2>
+                        <div class="feedback-details" id="feedback-details"></div>
+                        <div class="feedback-score" id="feedback-score"></div>
+                        <button class="btn btn-primary" id="next-btn">Next Question</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Screen -->
+        <section id="results-screen" class="screen">
+            <div class="container">
+                <div class="results-header">
+                    <h1>Quiz Complete</h1>
+                    <div class="final-score" id="final-score">
+                        <span class="score-number" id="final-score-number">0</span>
+                        <span class="score-total" id="final-score-total">/ 20</span>
+                    </div>
+                    <div class="score-percent" id="score-percent">0%</div>
+                    <div class="score-stars" id="score-stars"></div>
+                    <p class="score-message" id="score-message"></p>
+                </div>
+
+                <div class="results-breakdown" id="results-breakdown">
+                    <h3>Question Review</h3>
+                    <div class="results-list" id="results-list"></div>
+                </div>
+
+                <div class="results-actions">
+                    <button class="btn btn-primary btn-lg" id="play-again-btn">Play Again</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
