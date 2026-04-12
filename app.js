@@ -8,6 +8,12 @@ const CONFIG = {
   maxReplays: 5,
   ddragonBase: 'https://ddragon.leagueoflegends.com/cdn',
   ddragonVersionUrl: 'https://ddragon.leagueoflegends.com/api/versions.json',
+  wsUrl: (() => {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      return 'ws://localhost:8080';
+    }
+    return 'wss://lol-sound-quiz-server.onrender.com';
+  })(),
 };
 
 // ---- Ability Video CDN (Riot's CloudFront) ----------------------------------
@@ -681,16 +687,61 @@ class Autocomplete {
   }
 }
 
+// --------------- Multiplayer Client ------------------------------------------
+
+class MultiplayerClient {
+  constructor() {
+    this.ws = null;
+    this.playerId = null;
+    this.lobbyCode = null;
+    this.isHost = false;
+    this.playerName = '';
+    this.playerCount = 0;
+    this._handlers = {};
+    this._pingInterval = null;
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      try { this.ws = new WebSocket(CONFIG.wsUrl); }
+      catch (e) { return reject(e); }
+      const timeout = setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      this.ws.onopen = () => { clearTimeout(timeout); resolve(); };
+      this.ws.onerror = () => { clearTimeout(timeout); reject(new Error('WebSocket connection failed')); };
+      this.ws.onmessage = (e) => {
+        try { const msg = JSON.parse(e.data); this._emit(msg.type, msg); } catch {}
+      };
+      this.ws.onclose = () => this._emit('disconnected', {});
+    });
+  }
+
+  on(type, fn) { if (!this._handlers[type]) this._handlers[type] = []; this._handlers[type].push(fn); return this; }
+  _emit(type, data) { (this._handlers[type] || []).forEach(fn => fn(data)); }
+  _send(msg) { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg)); }
+  create(name, questionCount) { this.playerName = name; this._send({ type: 'create', name, questionCount }); }
+  join(name, code) { this.playerName = name; this._send({ type: 'join', name, code: code.toUpperCase() }); }
+  startGame() { this._send({ type: 'start' }); }
+  answer(champion, ability) { this._send({ type: 'answer', champion, ability }); }
+  skip() { this._send({ type: 'skip' }); }
+  playAgain() { this._send({ type: 'play_again' }); }
+  disconnect() { this.stopPing(); if (this.ws) { this.ws.close(); this.ws = null; } this.playerId = null; this.lobbyCode = null; this.isHost = false; this._handlers = {}; }
+  startPing() { this._pingInterval = setInterval(() => this._send({ type: 'ping' }), 25000); }
+  stopPing() { clearInterval(this._pingInterval); }
+}
+
 // --------------- UI Controller -----------------------------------------------
 
 class UIController {
   constructor() {
     // Screens
     this.screens = {
-      loading: document.getElementById('loading-screen'),
-      start:   document.getElementById('start-screen'),
-      quiz:    document.getElementById('quiz-screen'),
-      results: document.getElementById('results-screen'),
+      loading:   document.getElementById('loading-screen'),
+      start:     document.getElementById('start-screen'),
+      quiz:      document.getElementById('quiz-screen'),
+      results:   document.getElementById('results-screen'),
+      lobby:     document.getElementById('lobby-screen'),
+      waiting:   document.getElementById('waiting-screen'),
+      mpResults: document.getElementById('mp-results-screen'),
     };
 
     // Quiz elements
@@ -714,9 +765,16 @@ class UIController {
     this.feedbackScore   = document.getElementById('feedback-score');
     this.nextBtn         = document.getElementById('next-btn');
 
+    // Multiplayer elements
+    this.mpStatus     = document.getElementById('mp-status');
+    this.timerValue   = document.getElementById('timer-value');
+    this.timerFill    = document.getElementById('timer-fill');
+    this.mpAnsweredEl = document.getElementById('mp-answered');
+
     // State
     this.selectedAbility = '';
     this.replayCount = 0;
+    this.multiplayerMode = false;
   }
 
   showScreen(name) {
@@ -872,6 +930,162 @@ class UIController {
       </div>`;
     }).join('');
   }
+
+  // -- Multiplayer UI --
+
+  renderWaitingRoom(code, players, isHost) {
+    document.getElementById('room-code').textContent = code;
+    document.getElementById('player-count').textContent = players.length;
+    const listEl = document.getElementById('player-list');
+    listEl.innerHTML = players.map(p => `
+      <div class="player-item ${p.isHost ? 'host' : ''}">
+        <span class="player-avatar">${p.name.charAt(0).toUpperCase()}</span>
+        <span class="player-name">${p.name}</span>
+        ${p.isHost ? '<span class="host-badge">HOST</span>' : ''}
+      </div>
+    `).join('');
+
+    const startBtn = document.getElementById('start-game-btn');
+    const waitNote = document.getElementById('waiting-note');
+    if (isHost) {
+      startBtn.style.display = '';
+      startBtn.disabled = players.length < 2;
+      waitNote.textContent = players.length < 2 ? 'Need at least 2 players to start' : '';
+    } else {
+      startBtn.style.display = 'none';
+      waitNote.textContent = 'Waiting for the host to start...';
+    }
+  }
+
+  renderMpQuestion(data, score) {
+    this.multiplayerMode = true;
+    this.mpStatus.style.display = '';
+    this.timerValue.textContent = '15';
+    this.timerValue.classList.remove('urgent');
+    this.timerFill.style.width = '100%';
+    this.timerFill.classList.remove('urgent');
+    this.mpAnsweredEl.textContent = '';
+
+    this.questionCounter.textContent = `Question ${data.index + 1} / ${data.total}`;
+    this.scoreDisplay.textContent = `Score: ${score}`;
+    this.progressFill.style.width = `${(data.index / data.total) * 100}%`;
+
+    // Reset form
+    this.championInput.value = '';
+    this.selectedAbility = '';
+    this.abilityBtns.forEach(b => b.classList.remove('selected'));
+    this.submitBtn.disabled = true;
+    this.replayCount = 0;
+    this.playCount.textContent = 'Click to play';
+    this.waveform.classList.remove('active');
+    this.playBtn.querySelector('.play-icon').style.display = '';
+    this.playBtn.querySelector('.pause-icon').style.display = 'none';
+    this.playBtn.classList.remove('playing');
+    this.feedbackOverlay.classList.remove('show');
+    this.nextBtn.style.display = 'none'; // hide in multiplayer (auto-advance)
+
+    // Re-enable form
+    this.enableAnswerForm();
+    this.championInput.focus();
+  }
+
+  updateTimer(timeLeft) {
+    this.timerValue.textContent = timeLeft;
+    this.timerFill.style.width = `${(timeLeft / 15) * 100}%`;
+    if (timeLeft <= 5) {
+      this.timerValue.classList.add('urgent');
+      this.timerFill.classList.add('urgent');
+    } else {
+      this.timerValue.classList.remove('urgent');
+      this.timerFill.classList.remove('urgent');
+    }
+  }
+
+  updateMpAnswered(count, total) {
+    this.mpAnsweredEl.textContent = `${count}/${total} answered`;
+  }
+
+  showMpReveal(data, myId) {
+    const myResult = data.results.find(r => r.id === myId);
+    const result = myResult?.result || 'skipped';
+    this.feedbackCard.className = `feedback-card ${result}`;
+
+    const icons = { correct: '\u2714\uFE0F', partial: '\u2764\uFE0F', wrong: '\u274C', skipped: '\u23ED\uFE0F' };
+    const titles = { correct: 'Perfect!', partial: 'Close!', wrong: 'Wrong', skipped: 'Skipped' };
+    this.feedbackIcon.textContent = icons[result] || '';
+    this.feedbackTitle.textContent = titles[result] || '';
+
+    let html = `<div class="answer-line">
+      <span class="answer-label">Correct answer</span>
+      <span class="answer-value correct-value">${data.champion} \u2013 ${data.abilityKey}: ${data.abilityName}</span>
+    </div>`;
+
+    html += '<div class="reveal-scoreboard">';
+    data.scoreboard.forEach((p, i) => {
+      const isMe = p.id === myId;
+      html += `<div class="reveal-player ${isMe ? 'me' : ''}">
+        <span class="reveal-rank">#${i + 1}</span>
+        <span class="reveal-name">${p.name}</span>
+        <span class="reveal-score">${p.score}</span>
+      </div>`;
+    });
+    html += '</div>';
+
+    this.feedbackDetails.innerHTML = html;
+    this.feedbackScore.textContent = myResult ? `+${myResult.points} point${myResult.points !== 1 ? 's' : ''}` : '';
+    this.nextBtn.style.display = 'none';
+    this.feedbackOverlay.classList.add('show');
+  }
+
+  showMpResults(scoreboard, maxScore, myId, isHost) {
+    const winner = scoreboard[0];
+    document.getElementById('winner-announcement').innerHTML = `
+      <div class="winner-crown">\uD83D\uDC51</div>
+      <div class="winner-name">${winner.name}</div>
+      <div class="winner-score">${winner.score} / ${maxScore} points</div>
+    `;
+
+    const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+    document.getElementById('leaderboard-list').innerHTML = scoreboard.map(p => {
+      const isMe = p.id === myId;
+      const medal = p.rank <= 3 ? medals[p.rank - 1] : `#${p.rank}`;
+      return `<div class="leaderboard-item ${isMe ? 'me' : ''} rank-${p.rank}">
+        <span class="lb-rank">${medal}</span>
+        <span class="lb-name">${p.name}</span>
+        <span class="lb-score">${p.score} pts</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('mp-play-again-btn').style.display = isHost ? '' : 'none';
+  }
+
+  showLobbyError(msg) {
+    const el = document.getElementById('lobby-error');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  disableAnswerForm() {
+    this.submitBtn.disabled = true;
+    this.skipBtn.disabled = true;
+    this.championInput.disabled = true;
+    this.abilityBtns.forEach(b => { b.disabled = true; });
+  }
+
+  enableAnswerForm() {
+    this.skipBtn.disabled = false;
+    this.championInput.disabled = false;
+    this.abilityBtns.forEach(b => { b.disabled = false; });
+    this._validateForm();
+  }
+
+  resetForSolo() {
+    this.multiplayerMode = false;
+    this.mpStatus.style.display = 'none';
+    this.nextBtn.style.display = '';
+    this.enableAnswerForm();
+  }
 }
 
 // --------------- App Initialisation ------------------------------------------
@@ -883,6 +1097,13 @@ class UIController {
   let ddragonVersion = '14.8.1'; // fallback
   let allChampions = [];
   let autocomplete = null;
+
+  // Multiplayer state
+  let mp = null;
+  let mpScore = 0;
+  let mpCurrentQuestion = null;
+  let mpPlayerCount = 0;
+  let soundPlaying = false;
 
   // 1. Fetch Data Dragon version & champion list
   try {
@@ -946,7 +1167,6 @@ class UIController {
   });
 
   // Play sound
-  let soundPlaying = false;
   ui.playBtn.addEventListener('click', async () => {
     if (soundPlaying) {
       sound.stop();
@@ -956,8 +1176,16 @@ class UIController {
     }
     if (ui.replayCount >= CONFIG.maxReplays) return;
 
-    const q = quiz.current();
-    if (!q) return;
+    let champion, key;
+    if (mp && mpCurrentQuestion) {
+      champion = mpCurrentQuestion.champion;
+      key = mpCurrentQuestion.abilityKey;
+    } else {
+      const q = quiz.current();
+      if (!q) return;
+      champion = q.champion;
+      key = q.key;
+    }
 
     ui.replayCount++;
     ui.updatePlayCount(ui.replayCount, CONFIG.maxReplays);
@@ -965,7 +1193,7 @@ class UIController {
     ui.setPlaying(true);
 
     try {
-      await sound.play(q.champion, q.key);
+      await sound.play(champion, key);
     } catch (e) {
       console.warn('Audio playback error', e);
     }
@@ -989,7 +1217,16 @@ class UIController {
     if (ui.submitBtn.disabled) return;
     const champGuess = autocomplete.getValue();
     const keyGuess   = ui.selectedAbility;
-    const answer     = quiz.submitAnswer(champGuess, keyGuess);
+
+    if (mp && mp.ws && mp.ws.readyState === WebSocket.OPEN) {
+      // Multiplayer
+      mp.answer(champGuess, keyGuess);
+      ui.disableAnswerForm();
+      return;
+    }
+
+    // Solo
+    const answer = quiz.submitAnswer(champGuess, keyGuess);
     if (answer) {
       sound.stop();
       ui.setPlaying(false);
@@ -1000,6 +1237,11 @@ class UIController {
 
   // Skip
   ui.skipBtn.addEventListener('click', () => {
+    if (mp && mp.ws && mp.ws.readyState === WebSocket.OPEN) {
+      mp.skip();
+      ui.disableAnswerForm();
+      return;
+    }
     const answer = quiz.skip();
     sound.stop();
     ui.setPlaying(false);
@@ -1033,5 +1275,191 @@ class UIController {
   // Play again
   document.getElementById('play-again-btn').addEventListener('click', () => {
     ui.showScreen('start');
+  });
+
+  // ---- Multiplayer Flow ----
+
+  // "Play with Friends" button
+  document.getElementById('multiplayer-btn').addEventListener('click', () => {
+    ui.showScreen('lobby');
+  });
+
+  // Back to start from lobby
+  document.getElementById('back-to-start-btn').addEventListener('click', () => {
+    ui.showScreen('start');
+  });
+
+  // MP length options
+  document.querySelectorAll('#mp-length-options .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#mp-length-options .option-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Force uppercase on join code input
+  document.getElementById('join-code').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+
+  function setupMpHandlers() {
+    mp.on('lobby', (msg) => {
+      mp.playerId = msg.playerId;
+      mp.lobbyCode = msg.code;
+      mp.isHost = msg.isHost;
+      mp.playerCount = msg.players.length;
+      mp.startPing();
+      ui.showScreen('waiting');
+      ui.renderWaitingRoom(msg.code, msg.players, msg.isHost);
+    });
+
+    mp.on('player_update', (msg) => {
+      mp.playerCount = msg.players.length;
+      const me = msg.players.find(p => p.id === mp.playerId);
+      if (me) mp.isHost = me.isHost;
+      ui.renderWaitingRoom(mp.lobbyCode, msg.players, mp.isHost);
+    });
+
+    mp.on('error', (msg) => {
+      ui.showLobbyError(msg.message);
+    });
+
+    mp.on('game_start', (msg) => {
+      mpScore = 0;
+      ui.showScreen('quiz');
+    });
+
+    mp.on('question', (msg) => {
+      mpCurrentQuestion = msg;
+      ui.feedbackOverlay.classList.remove('show');
+      ui.renderMpQuestion(msg, mpScore);
+
+      // Auto-play the sound after a short delay
+      setTimeout(async () => {
+        if (!mpCurrentQuestion || mpCurrentQuestion.index !== msg.index) return;
+        ui.replayCount++;
+        ui.updatePlayCount(ui.replayCount, CONFIG.maxReplays);
+        soundPlaying = true;
+        ui.setPlaying(true);
+        try {
+          await sound.play(msg.champion, msg.abilityKey);
+        } catch (e) {
+          console.warn('Auto-play failed', e);
+        }
+        soundPlaying = false;
+        ui.setPlaying(false);
+      }, 400);
+    });
+
+    mp.on('tick', (msg) => {
+      ui.updateTimer(msg.timeLeft);
+    });
+
+    mp.on('player_answered', (msg) => {
+      ui.updateMpAnswered(msg.answered, mp.playerCount);
+    });
+
+    mp.on('reveal', (msg) => {
+      sound.stop();
+      ui.setPlaying(false);
+      soundPlaying = false;
+      const myResult = msg.results.find(r => r.id === mp.playerId);
+      if (myResult) mpScore += myResult.points;
+      ui.showMpReveal(msg, mp.playerId);
+    });
+
+    mp.on('game_over', (msg) => {
+      sound.stop();
+      soundPlaying = false;
+      ui.feedbackOverlay.classList.remove('show');
+      ui.showScreen('mpResults');
+      ui.showMpResults(msg.scoreboard, msg.maxScore, mp.playerId, mp.isHost);
+    });
+
+    mp.on('back_to_lobby', (msg) => {
+      mp.playerCount = msg.players.length;
+      const me = msg.players.find(p => p.id === mp.playerId);
+      if (me) mp.isHost = me.isHost;
+      ui.showScreen('waiting');
+      ui.renderWaitingRoom(mp.lobbyCode, msg.players, mp.isHost);
+    });
+
+    mp.on('disconnected', () => {
+      mp.stopPing();
+      ui.showLobbyError('Disconnected from server');
+      setTimeout(() => ui.showScreen('start'), 1500);
+      mp = null;
+    });
+  }
+
+  // Create lobby
+  document.getElementById('create-lobby-btn').addEventListener('click', async () => {
+    const name = document.getElementById('player-name').value.trim();
+    if (!name) { ui.showLobbyError('Please enter your name'); return; }
+
+    const lengthBtn = document.querySelector('#mp-length-options .option-btn.active');
+    const questionCount = parseInt(lengthBtn?.dataset.value || '10', 10);
+
+    try {
+      if (mp) mp.disconnect();
+      mp = new MultiplayerClient();
+      await mp.connect();
+      setupMpHandlers();
+      mp.create(name, questionCount);
+    } catch (e) {
+      ui.showLobbyError('Could not connect to server');
+      mp = null;
+    }
+  });
+
+  // Join lobby
+  document.getElementById('join-lobby-btn').addEventListener('click', async () => {
+    const name = document.getElementById('player-name').value.trim();
+    const code = document.getElementById('join-code').value.trim().toUpperCase();
+    if (!name) { ui.showLobbyError('Please enter your name'); return; }
+    if (!code || code.length !== 4) { ui.showLobbyError('Enter a 4-character room code'); return; }
+
+    try {
+      if (mp) mp.disconnect();
+      mp = new MultiplayerClient();
+      await mp.connect();
+      setupMpHandlers();
+      mp.join(name, code);
+    } catch (e) {
+      ui.showLobbyError('Could not connect to server');
+      mp = null;
+    }
+  });
+
+  // Start game (host only)
+  document.getElementById('start-game-btn').addEventListener('click', () => {
+    if (mp) mp.startGame();
+  });
+
+  // Copy room code
+  document.getElementById('copy-code-btn').addEventListener('click', () => {
+    const code = document.getElementById('room-code').textContent;
+    navigator.clipboard.writeText(code).catch(() => {});
+    const btn = document.getElementById('copy-code-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+
+  // Leave lobby / Leave results
+  document.getElementById('leave-lobby-btn').addEventListener('click', () => {
+    if (mp) { mp.disconnect(); mp = null; }
+    ui.resetForSolo();
+    ui.showScreen('start');
+  });
+
+  document.getElementById('mp-leave-btn').addEventListener('click', () => {
+    if (mp) { mp.disconnect(); mp = null; }
+    ui.resetForSolo();
+    ui.showScreen('start');
+  });
+
+  // Play again (host only)
+  document.getElementById('mp-play-again-btn').addEventListener('click', () => {
+    if (mp) mp.playAgain();
   });
 })();

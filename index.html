@@ -82,10 +82,83 @@
                     Start Quiz
                 </button>
 
+                <button id="multiplayer-btn" class="btn btn-outline btn-lg">
+                    Play with Friends
+                </button>
+
                 <p class="demo-note">
                     Real ability SFX from Riot's official ability previews.
                     117 abilities across 52 champions.
                 </p>
+            </div>
+        </section>
+
+        <!-- Lobby Screen -->
+        <section id="lobby-screen" class="screen">
+            <div class="container">
+                <div class="hero">
+                    <h1 class="title">Multiplayer</h1>
+                    <p class="subtitle">Play with friends in real-time</p>
+                </div>
+
+                <div class="lobby-name-input">
+                    <label for="player-name">Your Name</label>
+                    <input type="text" id="player-name" placeholder="Enter your name..." maxlength="16" spellcheck="false">
+                </div>
+
+                <div class="lobby-actions">
+                    <div class="card lobby-create">
+                        <h3>Create Lobby</h3>
+                        <p>Start a new game and invite friends</p>
+                        <div class="quiz-options lobby-options">
+                            <label class="option-label">Questions</label>
+                            <div class="option-buttons" id="mp-length-options">
+                                <button class="option-btn" data-value="5">5</button>
+                                <button class="option-btn active" data-value="10">10</button>
+                                <button class="option-btn" data-value="20">20</button>
+                            </div>
+                        </div>
+                        <button id="create-lobby-btn" class="btn btn-primary">Create Lobby</button>
+                    </div>
+
+                    <div class="lobby-divider"><span>OR</span></div>
+
+                    <div class="card lobby-join">
+                        <h3>Join Lobby</h3>
+                        <p>Enter a room code to join</p>
+                        <div class="join-code-input">
+                            <input type="text" id="join-code" placeholder="ABCD" maxlength="4" spellcheck="false">
+                        </div>
+                        <button id="join-lobby-btn" class="btn btn-primary">Join</button>
+                    </div>
+                </div>
+
+                <button id="back-to-start-btn" class="btn btn-ghost">Back to Menu</button>
+            </div>
+            <div class="lobby-error" id="lobby-error"></div>
+        </section>
+
+        <!-- Waiting Room -->
+        <section id="waiting-screen" class="screen">
+            <div class="container">
+                <div class="waiting-header">
+                    <h1 class="title">Lobby</h1>
+                    <div class="room-code-display">
+                        <span class="room-code-label">Room Code</span>
+                        <span class="room-code" id="room-code">----</span>
+                        <button class="btn btn-ghost copy-code-btn" id="copy-code-btn">Copy</button>
+                    </div>
+                </div>
+
+                <div class="card player-list-card">
+                    <h3>Players (<span id="player-count">0</span>/8)</h3>
+                    <div class="player-list" id="player-list"></div>
+                </div>
+
+                <button id="start-game-btn" class="btn btn-primary btn-lg" style="display:none">Start Game</button>
+                <p class="waiting-note" id="waiting-note">Waiting for the host to start...</p>
+
+                <button id="leave-lobby-btn" class="btn btn-ghost">Leave Lobby</button>
             </div>
         </section>
 
@@ -100,6 +173,17 @@
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                </div>
+
+                <!-- Multiplayer Timer (hidden in solo) -->
+                <div class="mp-status" id="mp-status" style="display:none">
+                    <div class="mp-timer-bar">
+                        <div class="mp-timer-fill" id="timer-fill"></div>
+                    </div>
+                    <div class="mp-timer-info">
+                        <span class="timer-value" id="timer-value">15</span>
+                        <span class="mp-answered" id="mp-answered"></span>
                     </div>
                 </div>
 
@@ -191,6 +275,26 @@
 
                 <div class="results-actions">
                     <button class="btn btn-primary btn-lg" id="play-again-btn">Play Again</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Multiplayer Results -->
+        <section id="mp-results-screen" class="screen">
+            <div class="container">
+                <div class="results-header">
+                    <h1>Game Over</h1>
+                    <div class="winner-announcement" id="winner-announcement"></div>
+                </div>
+
+                <div class="leaderboard" id="leaderboard">
+                    <h3>Leaderboard</h3>
+                    <div class="leaderboard-list" id="leaderboard-list"></div>
+                </div>
+
+                <div class="results-actions">
+                    <button class="btn btn-primary btn-lg" id="mp-play-again-btn" style="display:none">Play Again</button>
+                    <button class="btn btn-ghost" id="mp-leave-btn">Leave Lobby</button>
                 </div>
             </div>
         </section>
