@@ -55,15 +55,15 @@
                     <h3>Scoring</h3>
                     <div class="score-rules">
                         <div class="score-rule">
-                            <span class="score-badge perfect">+2</span>
-                            <span>Champion + Ability correct</span>
+                            <span class="score-badge perfect">1000</span>
+                            <span>Champion + Ability (max, faster = more)</span>
                         </div>
                         <div class="score-rule">
-                            <span class="score-badge partial">+1</span>
-                            <span>Champion correct, wrong ability</span>
+                            <span class="score-badge partial">500</span>
+                            <span>Champion only (max, faster = more)</span>
                         </div>
                         <div class="score-rule">
-                            <span class="score-badge wrong">+0</span>
+                            <span class="score-badge wrong">0</span>
                             <span>Wrong champion</span>
                         </div>
                     </div>
@@ -84,6 +84,10 @@
 
                 <button id="multiplayer-btn" class="btn btn-outline btn-lg">
                     Play with Friends
+                </button>
+
+                <button id="leaderboard-btn" class="btn btn-ghost btn-lg">
+                    Global Leaderboard
                 </button>
 
                 <p class="demo-note">
@@ -273,6 +277,15 @@
                     <div class="results-list" id="results-list"></div>
                 </div>
 
+                <div class="submit-score-section" id="submit-score-section">
+                    <h3>Submit to Leaderboard</h3>
+                    <div class="submit-score-form">
+                        <input type="text" id="score-name-input" placeholder="Your name..." maxlength="16" spellcheck="false">
+                        <button class="btn btn-primary" id="submit-score-btn">Submit Score</button>
+                    </div>
+                    <p class="submit-status" id="submit-status"></p>
+                </div>
+
                 <div class="results-actions">
                     <button class="btn btn-primary btn-lg" id="play-again-btn">Play Again</button>
                 </div>
@@ -298,6 +311,19 @@
                 </div>
             </div>
         </section>
+        <!-- Leaderboard Overlay -->
+        <div class="leaderboard-overlay" id="leaderboard-overlay">
+            <div class="leaderboard-modal">
+                <div class="leaderboard-modal-header">
+                    <h2>Global Leaderboard</h2>
+                    <button class="close-btn" id="close-leaderboard-btn">&times;</button>
+                </div>
+                <div class="leaderboard-modal-content" id="leaderboard-content">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">Loading...</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

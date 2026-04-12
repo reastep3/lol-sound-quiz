@@ -156,6 +156,22 @@ function send(ws, msg) {
 
 const lobbies = new Map();  // code → Lobby
 
+const leaderboard = [];
+const MAX_LEADERBOARD = 100;
+
+function addToLeaderboard(entry) {
+  leaderboard.push({
+    name: (entry.name || 'Anonymous').slice(0, 16),
+    score: entry.score,
+    maxScore: entry.maxScore,
+    questions: entry.questions,
+    mode: entry.mode || 'solo',
+    date: Date.now(),
+  });
+  leaderboard.sort((a, b) => b.score - a.score);
+  if (leaderboard.length > MAX_LEADERBOARD) leaderboard.length = MAX_LEADERBOARD;
+}
+
 class Lobby {
   constructor(code, host) {
     this.code = code;
@@ -242,8 +258,8 @@ class Lobby {
     const keyCorrect = ability === q.key;
     let points = 0;
     let result = 'wrong';
-    if (champCorrect && keyCorrect)  { points = 2; result = 'correct'; }
-    else if (champCorrect)           { points = 1; result = 'partial'; }
+    if (champCorrect && keyCorrect)  { points = Math.round(100 + 900 * (this.timeLeft / QUESTION_TIME)); result = 'correct'; }
+    else if (champCorrect)           { points = Math.round(50 + 450 * (this.timeLeft / QUESTION_TIME)); result = 'partial'; }
 
     p.score += points;
     p.answered = true;
@@ -319,7 +335,17 @@ class Lobby {
       .sort((a, b) => b.score - a.score)
       .map((p, i) => ({ ...p, rank: i + 1 }));
 
-    this.broadcast({ type: 'game_over', scoreboard, maxScore: this.questions.length * 2 });
+    this.broadcast({ type: 'game_over', scoreboard, maxScore: this.questions.length * 1000 });
+
+    for (const p of this.players.values()) {
+      addToLeaderboard({
+        name: p.name,
+        score: p.score,
+        maxScore: this.questions.length * 1000,
+        questions: this.questions.length,
+        mode: 'multiplayer',
+      });
+    }
   }
 
   cleanup() {
@@ -329,12 +355,48 @@ class Lobby {
 
 // ---- HTTP server (health check for Render) ----------------------------------
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 const httpServer = http.createServer((req, res) => {
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
+
   if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', lobbies: lobbies.size }));
+  } else if (req.url === '/api/leaderboard' && req.method === 'GET') {
+    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(leaderboard.slice(0, 50)));
+  } else if (req.url === '/api/score' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        if (typeof data.score !== 'number' || typeof data.maxScore !== 'number' || typeof data.questions !== 'number') {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid payload: score, maxScore, and questions are required numbers' }));
+          return;
+        }
+        addToLeaderboard(data);
+        const rank = leaderboard.findIndex(e => e.score === data.score && e.name === (data.name || 'Anonymous').slice(0, 16)) + 1;
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, rank }));
+      } catch (e) {
+        res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
   } else {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'text/plain' });
     res.end('LoL Sound Quiz WebSocket Server');
   }
 });

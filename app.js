@@ -14,6 +14,12 @@ const CONFIG = {
     }
     return 'wss://lol-sound-quiz.onrender.com';
   })(),
+  apiUrl: (() => {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      return 'http://localhost:8080';
+    }
+    return 'https://lol-sound-quiz.onrender.com';
+  })(),
 };
 
 // ---- Ability Video CDN (Riot's CloudFront) ----------------------------------
@@ -516,7 +522,7 @@ class QuizEngine {
     return this.questions[this.currentIndex] || null;
   }
 
-  submitAnswer(championGuess, keyGuess) {
+  submitAnswer(championGuess, keyGuess, timeLeft = 15) {
     const q = this.current();
     if (!q) return null;
 
@@ -525,8 +531,8 @@ class QuizEngine {
 
     let points = 0;
     let result = 'wrong';
-    if (champCorrect && keyCorrect) { points = 2; result = 'correct'; }
-    else if (champCorrect)          { points = 1; result = 'partial'; }
+    if (champCorrect && keyCorrect) { points = Math.round(100 + 900 * (timeLeft / 15)); result = 'correct'; }
+    else if (champCorrect)          { points = Math.round(50 + 450 * (timeLeft / 15)); result = 'partial'; }
 
     this.score += points;
     const answer = {
@@ -569,7 +575,7 @@ class QuizEngine {
   }
 
   maxScore() {
-    return this.length * 2;
+    return this.length * 1000;
   }
 }
 
@@ -929,6 +935,17 @@ class UIController {
         <div class="result-points">+${a.points}</div>
       </div>`;
     }).join('');
+
+    // Reset submit score section
+    const submitBtn = document.getElementById('submit-score-btn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Score';
+    }
+    const submitStatus = document.getElementById('submit-status');
+    if (submitStatus) submitStatus.textContent = '';
+    const nameInput = document.getElementById('score-name-input');
+    if (nameInput) nameInput.value = '';
   }
 
   // -- Multiplayer UI --
@@ -1080,6 +1097,31 @@ class UIController {
     this._validateForm();
   }
 
+  startSoloTimer(onTick, onExpire) {
+    this.mpStatus.style.display = '';
+    this.timerValue.textContent = '15';
+    this.timerValue.classList.remove('urgent');
+    this.timerFill.style.width = '100%';
+    this.timerFill.classList.remove('urgent');
+    this.mpAnsweredEl.textContent = '';
+
+    let timeLeft = 15;
+    this._soloTimerInterval = setInterval(() => {
+      timeLeft--;
+      this.updateTimer(timeLeft);
+      if (onTick) onTick(timeLeft);
+      if (timeLeft <= 0) {
+        this.stopSoloTimer();
+        if (onExpire) onExpire();
+      }
+    }, 1000);
+    return () => timeLeft; // getter
+  }
+
+  stopSoloTimer() {
+    clearInterval(this._soloTimerInterval);
+  }
+
   resetForSolo() {
     this.multiplayerMode = false;
     this.mpStatus.style.display = 'none';
@@ -1104,6 +1146,7 @@ class UIController {
   let mpCurrentQuestion = null;
   let mpPlayerCount = 0;
   let soundPlaying = false;
+  let soloTimeLeft = 15;
 
   // 1. Fetch Data Dragon version & champion list
   try {
@@ -1147,6 +1190,23 @@ class UIController {
   // Show start screen
   ui.showScreen('start');
 
+  // --------------- Solo Timer Helper -----------------------------------------
+
+  function startSoloTimer() {
+    soloTimeLeft = 15;
+    const getTime = ui.startSoloTimer(
+      (t) => { soloTimeLeft = t; },
+      () => {
+        // Time expired - auto skip
+        const answer = quiz.skip();
+        sound.stop();
+        ui.setPlaying(false);
+        soundPlaying = false;
+        ui.showFeedback(answer, ddragonVersion);
+      }
+    );
+  }
+
   // --------------- Event Listeners -------------------------------------------
 
   // Quiz length options
@@ -1164,6 +1224,7 @@ class UIController {
     quiz.generate(length);
     ui.showScreen('quiz');
     ui.renderQuestion(quiz.current(), quiz.currentIndex, quiz.length, quiz.score);
+    startSoloTimer();
   });
 
   // Play sound
@@ -1226,8 +1287,9 @@ class UIController {
     }
 
     // Solo
-    const answer = quiz.submitAnswer(champGuess, keyGuess);
+    const answer = quiz.submitAnswer(champGuess, keyGuess, soloTimeLeft);
     if (answer) {
+      ui.stopSoloTimer();
       sound.stop();
       ui.setPlaying(false);
       soundPlaying = false;
@@ -1243,6 +1305,7 @@ class UIController {
       return;
     }
     const answer = quiz.skip();
+    ui.stopSoloTimer();
     sound.stop();
     ui.setPlaying(false);
     soundPlaying = false;
@@ -1254,7 +1317,10 @@ class UIController {
     if (quiz.next()) {
       autocomplete.reset();
       ui.renderQuestion(quiz.current(), quiz.currentIndex, quiz.length, quiz.score);
+      startSoloTimer();
     } else {
+      ui.stopSoloTimer();
+      ui.mpStatus.style.display = 'none';
       ui.showScreen('results');
       ui.renderResults(quiz, ddragonVersion);
     }
@@ -1275,6 +1341,99 @@ class UIController {
   // Play again
   document.getElementById('play-again-btn').addEventListener('click', () => {
     ui.showScreen('start');
+  });
+
+  // ---- Leaderboard ----
+
+  async function fetchLeaderboard() {
+    try {
+      const res = await fetch(`${CONFIG.apiUrl}/api/leaderboard`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      return await res.json();
+    } catch (e) {
+      console.warn('Leaderboard fetch failed:', e);
+      return null;
+    }
+  }
+
+  async function submitScore(name, score, maxScore, questions, mode) {
+    try {
+      const res = await fetch(`${CONFIG.apiUrl}/api/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, score, maxScore, questions, mode }),
+      });
+      if (!res.ok) throw new Error('Submit failed');
+      return await res.json();
+    } catch (e) {
+      console.warn('Score submit failed:', e);
+      return null;
+    }
+  }
+
+  function renderLeaderboardEntries(entries) {
+    const content = document.getElementById('leaderboard-content');
+    if (!entries || entries.length === 0) {
+      content.innerHTML = '<div class="lb-empty">No scores yet. Be the first!</div>';
+      return;
+    }
+    const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+    content.innerHTML = entries.map((e, i) => {
+      const rank = i + 1;
+      const medal = rank <= 3 ? medals[rank - 1] : `#${rank}`;
+      const pct = Math.round((e.score / e.maxScore) * 100);
+      const rankClass = rank <= 3 ? ` rank-${rank}` : '';
+      return `<div class="lb-entry${rankClass}">
+        <span class="lb-entry-rank">${medal}</span>
+        <span class="lb-entry-name">${e.name}</span>
+        <span class="lb-entry-score">${e.score.toLocaleString()}</span>
+        <span class="lb-entry-meta">${e.questions}Q ${e.mode === 'multiplayer' ? 'MP' : 'Solo'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ---- Leaderboard UI ----
+
+  document.getElementById('leaderboard-btn').addEventListener('click', async () => {
+    document.getElementById('leaderboard-overlay').classList.add('show');
+    document.getElementById('leaderboard-content').innerHTML = '<div class="loading-spinner"></div><p class="loading-text">Loading...</p>';
+    const entries = await fetchLeaderboard();
+    renderLeaderboardEntries(entries);
+  });
+
+  document.getElementById('close-leaderboard-btn').addEventListener('click', () => {
+    document.getElementById('leaderboard-overlay').classList.remove('show');
+  });
+
+  // Close overlay on background click
+  document.getElementById('leaderboard-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById('leaderboard-overlay').classList.remove('show');
+    }
+  });
+
+  // Submit solo score
+  document.getElementById('submit-score-btn').addEventListener('click', async () => {
+    const nameInput = document.getElementById('score-name-input');
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+
+    const btn = document.getElementById('submit-score-btn');
+    const status = document.getElementById('submit-status');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    const result = await submitScore(name, quiz.score, quiz.maxScore(), quiz.length, 'solo');
+    if (result?.ok) {
+      status.textContent = `Submitted! Rank #${result.rank}`;
+      status.style.color = 'var(--accent-teal)';
+      btn.textContent = 'Submitted!';
+    } else {
+      status.textContent = 'Failed to submit. Try again.';
+      status.style.color = 'var(--error)';
+      btn.disabled = false;
+      btn.textContent = 'Submit Score';
+    }
   });
 
   // ---- Multiplayer Flow ----
