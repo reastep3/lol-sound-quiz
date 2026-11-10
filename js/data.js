@@ -1,8 +1,11 @@
 // Champion roster and ability details, read live from Riot's Data Dragon.
 // Nothing here is a hand-kept list of champions: when Riot ships a new one,
 // it appears in the quiz on the next page load.
+//
+// The Android app reads the same things from the bundle it was built with
+// (Roster.fromBundle) and needs no connection.
 
-import { CONFIG, POOLS } from './config.js';
+import { CONFIG, POOLS, SLOTS } from './config.js';
 
 const ROSTER_CACHE_KEY = 'lsq.roster.v1';
 
@@ -40,6 +43,8 @@ function buildChampion(raw) {
     words,
     initials: words.map((w) => w[0]).join(''),
     nicknames: NICKNAMES[raw.id] || [],
+    // Slots with a sound in the offline bundle. null = not known up front (the website).
+    clips: typeof raw.clips === 'string' ? new Set(raw.clips) : null,
   };
 }
 
@@ -50,9 +55,10 @@ async function getJson(url, timeoutMs = 10_000) {
 }
 
 export class Roster {
-  constructor(version, rawChampions, { stale = false } = {}) {
+  constructor(version, rawChampions, { stale = false, bundle = null } = {}) {
     this.version = version;
     this.stale = stale;         // true when served from the offline cache
+    this.bundle = bundle;       // folder of the offline bundle, when built from one
     this.champions = rawChampions
       .map(buildChampion)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -62,8 +68,28 @@ export class Roster {
     this.listed = new Map();    // champion id -> Promise of Set of slots with a current clip
   }
 
+  // Everything the app needs, from the bundle it ships with: the roster,
+  // ability names, icons, and which abilities have a sound on board.
+  static fromBundle(manifest, base = CONFIG.bundle) {
+    const roster = new Roster(manifest.version, manifest.champions, { bundle: base });
+    roster.clipCount = 0;
+    for (const raw of manifest.champions) {
+      const champ = roster.byId.get(raw.id);
+      const abilities = {};
+      for (const slot of SLOTS) {
+        const a = raw.abilities?.[slot];
+        abilities[slot] = a ? { name: a.name, icon: a.icon ? `${base}/icons/${a.icon}` : null } : null;
+      }
+      roster.details.set(champ.id, Promise.resolve(abilities));
+      roster.listed.set(champ.id, Promise.resolve(champ.clips));
+      roster.clipCount += champ.clips.size;
+    }
+    return roster;
+  }
+
   // Latest patch from Riot; falls back to the last roster this browser saw.
   static async load() {
+    if (CONFIG.bundle) return Roster.fromBundle(await getJson(`${CONFIG.bundle}/manifest.json`));
     try {
       const versions = await getJson(`${CONFIG.ddragon}/api/versions.json`);
       const version = versions[0];
@@ -88,6 +114,7 @@ export class Roster {
   }
 
   iconUrl(champ) {
+    if (this.bundle) return `${this.bundle}/icons/champion/${champ.id}.png`;
     return `${CONFIG.ddragon}/cdn/${this.version}/img/champion/${champ.id}.png`;
   }
 
@@ -183,10 +210,16 @@ export function shuffle(list, random = Math.random) {
 // Every champion is equally likely and none appears twice in one quiz.
 // `reserve` holds the unused champions, for swapping in when a clip turns
 // out to be missing or silent.
+// When the roster already knows which sounds exist (the offline bundle), only
+// those are asked, so no question ever needs swapping.
 export function sampleQuestions(roster, count, pool, random = Math.random) {
-  const slots = (POOLS[pool] || POOLS.basic).slots;
-  const order = shuffle(roster.champions, random);
-  const pick = (champ) => ({ champ, slot: slots[Math.floor(random() * slots.length)] });
+  const poolSlots = (POOLS[pool] || POOLS.basic).slots;
+  const usable = (champ) => (champ.clips ? poolSlots.filter((s) => champ.clips.has(s)) : poolSlots);
+  const order = shuffle(roster.champions.filter((c) => usable(c).length), random);
+  const pick = (champ) => {
+    const slots = usable(champ);
+    return { champ, slot: slots[Math.floor(random() * slots.length)] };
+  };
   return {
     questions: order.slice(0, count).map(pick),
     reserve: order.slice(count),

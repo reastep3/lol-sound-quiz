@@ -4,7 +4,7 @@ import { CONFIG, POOLS, SLOTS } from './config.js';
 import { Roster, sampleQuestions, scoreAnswer } from './data.js';
 import { ClipLoader, Player, ClipError } from './audio.js';
 import { save } from './storage.js';
-import { wakeServer, fetchLeaderboard, submitScore, LobbyClient } from './net.js';
+import { wakeServer, isOffline, fetchLeaderboard, submitScore, LobbyClient } from './net.js';
 
 // ---- Tiny DOM helpers -------------------------------------------------------
 
@@ -36,6 +36,10 @@ function champIcon(champ, cls = 'champ-icon') {
 }
 
 const slotName = (slot) => (slot === 'P' ? 'Passive' : slot);
+
+// Phones have no Space key to point at.
+const TOUCH = window.matchMedia?.('(pointer: coarse)').matches;
+const REPLAY_HINT = TOUCH ? 'Tap the button to hear it again' : 'Space or the button replays it';
 
 let toastTimer = 0;
 function toast(message, ms = 3500) {
@@ -186,12 +190,22 @@ class ChampionPicker {
       }, champIcon(champ), el('span', {}, champ.name))));
     }
     this.list.classList.add('open');
+    this.fit();
     this.input.setAttribute('aria-expanded', 'true');
     if (this.active >= 0) this.input.setAttribute('aria-activedescendant', `champ-opt-${this.active}`);
     else this.input.removeAttribute('aria-activedescendant');
   }
 
   get open() { return this.list.classList.contains('open'); }
+
+  // Keep the list inside what is actually visible; it scrolls within itself.
+  // A phone keyboard can leave room for only two or three names.
+  fit() {
+    const view = window.visualViewport;
+    const bottom = view ? view.offsetTop + view.height : window.innerHeight;
+    const room = bottom - this.input.getBoundingClientRect().bottom - 10;
+    this.list.style.maxHeight = `${Math.round(Math.max(96, Math.min(290, room)))}px`;
+  }
 
   close() {
     this.list.classList.remove('open');
@@ -496,7 +510,7 @@ class Game {
     const ok = await app.player.play(this.clip, {
       onProgress: (p) => { if (this.current) view.setProgress(p); },
       onEnd: () => {
-        if (this.current && this.clip) view.setState('ready', 'Space or the button replays it');
+        if (this.current && this.clip) view.setState('ready', REPLAY_HINT);
       },
     });
     if (!this.current) return ok;
@@ -785,6 +799,7 @@ const STATUS_TEXT = {
   online: 'Game server online',
   outdated: 'Game server is updating. Try again in a few minutes',
   offline: "Can't reach the game server",
+  nointernet: 'No internet connection',
 };
 
 function setServerStatus(state) {
@@ -1043,6 +1058,7 @@ async function openLobby(action) {
 
   const status = await wakeServer(setServerStatus);
   if (app.screen !== 'lobby') { setBusy(false); return; }
+  if (status.offline) { toast('Playing with friends needs an internet connection.'); setBusy(false); return; }
   if (!status.ok) { toast("Couldn't reach the game server. Try again in a minute."); setBusy(false); return; }
   if (status.outdated) { toast('The game server is updating. Try again in a few minutes.'); setBusy(false); return; }
 
@@ -1065,9 +1081,16 @@ async function openLobby(action) {
 const lb = { scope: null, count: null, requestId: 0 };
 
 function openLeaderboard() {
+  // Without a connection, open on the scores that are always available.
+  if (isOffline()) lb.scope.set('mine');
   $('leaderboard').classList.add('show');
   renderLeaderboard();
   $('lb-close').focus({ preventScroll: true });
+}
+
+function closeLeaderboard() {
+  lb.requestId++;
+  $('leaderboard').classList.remove('show');
 }
 
 async function renderLeaderboard() {
@@ -1082,7 +1105,7 @@ async function renderLeaderboard() {
   const empty = (text) => body.replaceChildren(el('p', { class: 'lb-empty' }, text));
 
   if (lb.scope.value === 'mine') {
-    $('lb-note').textContent = 'Saved in this browser only.';
+    $('lb-note').textContent = CONFIG.bundle ? 'Saved on this device only.' : 'Saved in this browser only.';
     const games = save.games.filter((g) => g.count === count).sort((a, b) => b.score - a.score).slice(0, 30);
     if (!games.length) { empty(`No ${count}-question games yet. Go play one.`); return; }
     body.replaceChildren(...games.map((g, i) => row(
@@ -1101,6 +1124,7 @@ async function renderLeaderboard() {
     }
   });
   if (requestId !== lb.requestId) return;
+  if (status.offline) { empty('The global board needs an internet connection. Your own games are under "Your games".'); return; }
   if (!status.ok) { empty("Couldn't reach the leaderboard server. Try again in a minute."); return; }
   try {
     const entries = await fetchLeaderboard(count);
@@ -1139,6 +1163,7 @@ async function postScore() {
   const wake = await wakeServer((state) => {
     if (state === 'waking') status.textContent = 'Waking the server… this can take a minute.';
   });
+  if (wake.offline) { fail('Posting needs an internet connection. Your score is saved on this device either way.'); return; }
   if (!wake.ok) { fail("Couldn't reach the leaderboard server. Try again in a minute."); return; }
   try {
     const result = await submitScore({ name, score: game.score, questions: game.total, pool: game.options.pool });
@@ -1285,6 +1310,7 @@ function wireEvents() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => view.drawWave(), 100);
+    if (picker.open) picker.fit();     // e.g. the phone keyboard just opened or closed
   });
 
   // Solo results
@@ -1296,7 +1322,6 @@ function wireEvents() {
   // Leaderboard
   lb.scope = segmented($('lb-scope'), 'global', renderLeaderboard);
   lb.count = segmented($('lb-count'), CONFIG.defaultCount, renderLeaderboard);
-  const closeLeaderboard = () => { lb.requestId++; $('leaderboard').classList.remove('show'); };
   $('lb-close').addEventListener('click', closeLeaderboard);
   $('leaderboard').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLeaderboard(); });
   document.addEventListener('keydown', (e) => {
@@ -1338,7 +1363,8 @@ function wireEvents() {
   };
   $('copy-code-btn').addEventListener('click', (e) => copy(e.currentTarget, $('room-code').textContent));
   $('copy-link-btn').addEventListener('click', (e) => {
-    const url = new URL(location.href);
+    // Inside the app, the page's own address means nothing to a friend.
+    const url = new URL(CONFIG.bundle ? CONFIG.siteUrl : location.href);
     url.search = `?join=${$('room-code').textContent}`;
     url.hash = '';
     copy(e.currentTarget, url.toString());
@@ -1349,6 +1375,51 @@ function wireEvents() {
     app.player.unlock();
     app.mp?.client.send({ type: 'play_again' });
   });
+
+  // Don't keep playing into a pocket or a background tab.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) app.player.stop(); });
+
+  // Keep the lobby screen's status honest when the connection comes and goes.
+  window.addEventListener('online', () => { if (app.screen === 'lobby' && !app.mp) wakeServer(setServerStatus); });
+  window.addEventListener('offline', () => { if (app.screen === 'lobby' && !app.mp) setServerStatus('nointernet'); });
+}
+
+// ---- Back -------------------------------------------------------------------
+// The Android app routes its back button and back gesture here. Returns true
+// when the press was used; false tells the app there is nothing left to go
+// back to, so it should step aside.
+
+let backArmedAt = 0;
+
+function goBack() {
+  if ($('leaderboard').classList.contains('show')) { closeLeaderboard(); return true; }
+  switch (app.screen) {
+    case 'results':
+      app.player.stop();
+      showStart();
+      return true;
+    case 'lobby':
+      if (app.mp) app.mp.leave(); else showStart();
+      return true;
+    case 'quiz':
+    case 'waiting':
+    case 'mpResults': {
+      // Leaving costs a game in progress or a seat in a lobby, so ask twice.
+      const quitting = app.screen === 'quiz';
+      if (Date.now() - backArmedAt > 2500) {
+        backArmedAt = Date.now();
+        toast(quitting ? 'Press back again to quit' : 'Press back again to leave', 2500);
+        return true;
+      }
+      backArmedAt = 0;
+      if (quitting && app.game) app.game.quit();
+      else if (app.mp) app.mp.leave();
+      else showStart();
+      return true;
+    }
+    default:
+      return false;
+  }
 }
 
 // ---- Boot -------------------------------------------------------------------
@@ -1361,14 +1432,19 @@ async function boot() {
     app.roster = await Roster.load();
   } catch {
     $('loading-spinner').hidden = true;
-    $('loading-text').textContent = "Couldn't reach Riot's data servers. Check your connection.";
+    $('loading-text').textContent = CONFIG.bundle
+      ? "Couldn't read the app's own data. Reinstalling the app should fix it."
+      : "Couldn't reach Riot's data servers. Check your connection.";
     $('loading-retry').hidden = false;
     return;
   }
 
   if (!boot.wired) { wireEvents(); boot.wired = true; }
+  document.documentElement.classList.toggle('is-app', !!CONFIG.bundle);
   const n = app.roster.champions.length;
-  $('roster-note').textContent = `${n} champions · patch ${app.roster.patch}${app.roster.stale ? ' (offline copy)' : ''} · real in-game audio from Riot's ability previews`;
+  $('roster-note').textContent = app.roster.bundle
+    ? `${n} champions · patch ${app.roster.patch} · ${fmt(app.roster.clipCount)} sounds stored on this device, no connection needed`
+    : `${n} champions · patch ${app.roster.patch}${app.roster.stale ? ' (offline copy)' : ''} · real in-game audio from Riot's ability previews`;
 
   // An invite link (?join=CODE) goes straight to the lobby screen.
   const invite = new URLSearchParams(location.search).get('join');
@@ -1382,13 +1458,15 @@ async function boot() {
   } else {
     showStart();
     // The free server sleeps when idle. Nudge it now so the leaderboard and
-    // lobbies are ready by the time anyone wants them.
-    wakeServer();
+    // lobbies are ready by the time anyone wants them. The app leaves the
+    // network alone until the player asks for something that needs it.
+    if (!CONFIG.bundle) wakeServer();
   }
 }
 
 $('loading-retry').addEventListener('click', boot);
 boot();
 
-// Handy when debugging from the console.
+// Handy when debugging from the console; `back` is what the Android app calls.
+app.back = goBack;
 window.lsq = app;

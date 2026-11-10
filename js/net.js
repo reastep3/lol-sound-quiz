@@ -12,15 +12,23 @@ async function fetchJson(url, { timeoutMs = 8000, ...init } = {}) {
   return body;
 }
 
+// True only when the device itself says it has no connection at all.
+export const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
 // The server runs on a free host that sleeps when nobody is using it and
 // takes up to a minute to wake. Poll until it answers, reporting progress.
-// Resolves { ok, outdated } and never throws.
+// Resolves { ok, outdated, offline } and never throws.
 let wakePromise = null;
 export function wakeServer(onStatus = () => {}) {
+  // No connection: say so now instead of "waking the server" for a minute.
+  if (isOffline()) {
+    onStatus('nointernet');
+    return Promise.resolve({ ok: false, outdated: false, offline: true });
+  }
   // Several callers may ask at once (page load, lobby, leaderboard): share one wake-up.
   if (wakePromise) {
     onStatus('connecting');
-    wakePromise.then((r) => onStatus(r.ok ? (r.outdated ? 'outdated' : 'online') : 'offline'));
+    wakePromise.then((r) => onStatus(r.ok ? (r.outdated ? 'outdated' : 'online') : (r.offline ? 'nointernet' : 'offline')));
     return wakePromise;
   }
   wakePromise = (async () => {
@@ -35,13 +43,17 @@ export function wakeServer(onStatus = () => {}) {
           // A server that predates the protocol field is still running old code.
           const outdated = health.protocol !== CONFIG.protocol;
           onStatus(outdated ? 'outdated' : 'online');
-          return { ok: true, outdated };
+          return { ok: true, outdated, offline: false };
         }
       } catch { /* still asleep or unreachable */ }
+      if (isOffline()) {
+        onStatus('nointernet');
+        return { ok: false, outdated: false, offline: true };
+      }
       await sleep(2000);
     }
     onStatus('offline');
-    return { ok: false, outdated: false };
+    return { ok: false, outdated: false, offline: false };
   })();
   // Only an in-flight check is shared; the next caller checks afresh.
   wakePromise.then(() => { wakePromise = null; });

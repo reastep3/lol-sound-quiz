@@ -33,6 +33,11 @@ export function clipUrl(key, slot, { ext = 'webm', host = CONFIG.clipHost } = {}
   return `${host}/${id}/ability_${id}_${slot}1.${ext}`;
 }
 
+// The same sound inside the offline bundle: already trimmed, audio only.
+export function bundledClipUrl(key, slot, base = CONFIG.bundle) {
+  return `${base}/clips/${key}_${slot}.ogg`;
+}
+
 const toDb = (meanSquare) => (meanSquare > 0 ? 10 * Math.log10(meanSquare) : -120);
 const fromDb = (db) => 10 ** (db / 10);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -41,6 +46,8 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // Decide what part of a decoded clip to play and how much to amplify it.
 // Returns { silent: true } when there is nothing worth playing.
+// With opts.trim === false the whole clip is kept and only measured: that is
+// for clips from the offline bundle, which were trimmed when it was built.
 export function analyzePcm(channels, sampleRate, opts = A) {
   const left = channels[0];
   const right = channels[1] || null;
@@ -81,42 +88,47 @@ export function analyzePcm(channels, sampleRate, opts = A) {
   const wholeDb = toDb(loudest(0, frames));
   if (wholeDb < opts.silentDb) return { silent: true, loudDb: wholeDb };
 
-  // Start a little before the first frame that rises out of the background.
-  const startLevel = fromDb(Math.max(-62, wholeDb - 30));
-  let first = 0;
-  while (first < frames - 1 && energy[first] <= startLevel) first++;
-
-  // About one clip in sixteen opens with a second or more of faint map
-  // ambience before the ability is cast. If that long passes with nothing
-  // within 18 dB of the loudest part, skip ahead to just before the first
-  // real hit (keeping a little, so a soft attack isn't clipped).
-  const strongLevel = fromDb(wholeDb - 18);
-  let strong = first;
-  while (strong < frames - 1 && energy[strong] <= strongLevel) strong++;
-  if ((strong - first) * frameSec >= 1) first = Math.max(first, strong - Math.round(0.35 / frameSec));
-  const startSec = Math.max(0, first * frameSec - 0.1);
-
-  // End a little after the last frame that is still clearly audible...
-  const endLevel = fromDb(Math.max(-62, wholeDb - 38));
-  let last = frames - 1;
-  while (last > first && energy[last] <= endLevel) last--;
-  let endSec = Math.min(n / sampleRate, (last + 1) * frameSec + 0.25);
-
-  // ...but don't sit through seconds of ambience once the sound is over.
+  let startSec = 0;
+  let endSec = n / sampleRate;
   // `cut` means we stop while something is still (faintly) playing, so the
   // end gets a longer fade.
   let cut = false;
-  const tailLevel = fromDb(wholeDb - 24);
-  let lastStrong = last;
-  while (lastStrong > first && energy[lastStrong] <= tailLevel) lastStrong--;
-  const strongEnd = (lastStrong + 1) * frameSec;
-  if (endSec - strongEnd > 1.5) {
-    endSec = strongEnd + 1.2;
-    cut = true;
-  }
-  if (endSec - startSec > opts.maxPlaySec) {
-    endSec = startSec + opts.maxPlaySec;
-    cut = true;
+
+  if (opts.trim !== false) {
+    // Start a little before the first frame that rises out of the background.
+    const startLevel = fromDb(Math.max(-62, wholeDb - 30));
+    let first = 0;
+    while (first < frames - 1 && energy[first] <= startLevel) first++;
+
+    // About one clip in sixteen opens with a second or more of faint map
+    // ambience before the ability is cast. If that long passes with nothing
+    // within 18 dB of the loudest part, skip ahead to just before the first
+    // real hit (keeping a little, so a soft attack isn't clipped).
+    const strongLevel = fromDb(wholeDb - 18);
+    let strong = first;
+    while (strong < frames - 1 && energy[strong] <= strongLevel) strong++;
+    if ((strong - first) * frameSec >= 1) first = Math.max(first, strong - Math.round(0.35 / frameSec));
+    startSec = Math.max(0, first * frameSec - 0.1);
+
+    // End a little after the last frame that is still clearly audible...
+    const endLevel = fromDb(Math.max(-62, wholeDb - 38));
+    let last = frames - 1;
+    while (last > first && energy[last] <= endLevel) last--;
+    endSec = Math.min(n / sampleRate, (last + 1) * frameSec + 0.25);
+
+    // ...but don't sit through seconds of ambience once the sound is over.
+    const tailLevel = fromDb(wholeDb - 24);
+    let lastStrong = last;
+    while (lastStrong > first && energy[lastStrong] <= tailLevel) lastStrong--;
+    const strongEnd = (lastStrong + 1) * frameSec;
+    if (endSec - strongEnd > 1.5) {
+      endSec = strongEnd + 1.2;
+      cut = true;
+    }
+    if (endSec - startSec > opts.maxPlaySec) {
+      endSec = startSec + opts.maxPlaySec;
+      cut = true;
+    }
   }
 
   // Level by the loudness of the part that will be heard.
@@ -152,22 +164,30 @@ function decodeWith(ctx, bytes) {
   });
 }
 
-// Copy just the part we play into its own buffer, with short fades so the
-// cut points never click. The full decoded clip can then be garbage-collected.
-function sliceBuffer(buffer, { startSec, endSec, cut }) {
-  const sr = buffer.sampleRate;
-  const a = Math.floor(startSec * sr);
-  const b = Math.min(buffer.length, Math.ceil(endSec * sr));
+// Copy just the part we play, with short fades so the cut points never
+// click. Pure, like analyzePcm: the offline bundle is built with this too.
+export function slicePcm(channels, sampleRate, { startSec, endSec, cut }) {
+  const a = Math.floor(startSec * sampleRate);
+  const b = Math.min(channels[0].length, Math.ceil(endSec * sampleRate));
   const len = Math.max(1, b - a);
-  const out = new AudioBuffer({ length: len, numberOfChannels: buffer.numberOfChannels, sampleRate: sr });
-  const fadeIn = Math.min(len, Math.round(sr * 0.008));
-  const fadeOut = Math.min(len, Math.round(sr * (cut ? 0.4 : 0.03)));
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    const dst = out.getChannelData(ch);
-    dst.set(buffer.getChannelData(ch).subarray(a, b));
+  const fadeIn = Math.min(len, Math.round(sampleRate * 0.008));
+  const fadeOut = Math.min(len, Math.round(sampleRate * (cut ? 0.4 : 0.03)));
+  return channels.map((src) => {
+    const dst = new Float32Array(len);
+    dst.set(src.subarray(a, b));
     for (let i = 0; i < fadeIn; i++) dst[i] *= i / fadeIn;
     for (let i = 0; i < fadeOut; i++) dst[len - 1 - i] *= i / fadeOut;
-  }
+    return dst;
+  });
+}
+
+// The same, as an AudioBuffer. The full decoded clip can then be garbage-collected.
+function sliceBuffer(buffer, info) {
+  const channels = [];
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) channels.push(buffer.getChannelData(ch));
+  const parts = slicePcm(channels, buffer.sampleRate, info);
+  const out = new AudioBuffer({ length: parts[0].length, numberOfChannels: parts.length, sampleRate: buffer.sampleRate });
+  parts.forEach((part, ch) => out.copyToChannel(part, ch));
   return out;
 }
 
@@ -262,8 +282,22 @@ export class ClipLoader {
 
   async fetchClip(key, slot) {
     let decoded = null;
+    let bundled = false;
+
+    // The app carries its sounds with it. Riot's CDN is only asked when the
+    // bundle lacks one (a multiplayer question about a champion released
+    // after the app was built), and then only if there is a connection.
+    if (CONFIG.bundle) {
+      try {
+        decoded = await this.decode(await this.download(bundledClipUrl(key, slot)));
+        bundled = true;
+      } catch {
+        if (navigator.onLine === false) throw new ClipError('missing', 'not in the offline bundle');
+      }
+    }
+
     // WebM first (smaller). MP4 is for browsers that cannot decode WebM audio.
-    for (const ext of ['webm', 'mp4']) {
+    for (const ext of decoded ? [] : ['webm', 'mp4']) {
       let bytes;
       try {
         bytes = await this.download(clipUrl(key, slot, { ext }));
@@ -282,10 +316,12 @@ export class ClipLoader {
 
     const channels = [];
     for (let ch = 0; ch < Math.min(2, decoded.numberOfChannels); ch++) channels.push(decoded.getChannelData(ch));
-    const info = analyzePcm(channels, decoded.sampleRate);
+    // A bundled clip was already cut to the part worth playing (by this same
+    // analysis, when the bundle was built), so it is only measured here.
+    const info = analyzePcm(channels, decoded.sampleRate, bundled ? { ...A, trim: false } : A);
     if (info.silent) throw new ClipError('silent', `${info.loudDb.toFixed(0)} dB`);
 
-    const buffer = sliceBuffer(decoded, info);
+    const buffer = bundled ? decoded : sliceBuffer(decoded, info);
     return {
       kind: 'buffer',
       buffer,

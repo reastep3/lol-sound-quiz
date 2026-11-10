@@ -35,7 +35,14 @@
 
 [hidden] { display: none !important; }
 
-html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+
+/* Inside the Android app, a long press should not start selecting button labels. */
+.is-app body { -webkit-user-select: none; user-select: none; }
+.is-app input { -webkit-user-select: text; user-select: text; }
+
+/* Keyboard shortcuts mean nothing on a touch screen. */
+@media (pointer: coarse) { .keys-note { display: none; } }
 
 body {
     font-family: var(--font);
@@ -471,7 +478,7 @@ kbd {
     color: var(--gold-bright);
 }
 
-.player-list { display: grid; gap: 0.45rem; }
+.player-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
 
 .player-item {
     display: flex;
@@ -813,7 +820,7 @@ kbd {
 .fb-actions .btn { flex: 1; padding-left: 0.6rem; padding-right: 0.6rem; }
 .fb-countdown { color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem; }
 
-.reveal-board { margin-bottom: 1rem; display: grid; gap: 0.3rem; text-align: left; }
+.reveal-board { margin-bottom: 1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; text-align: left; }
 
 .board-row {
     display: flex;
@@ -838,7 +845,7 @@ kbd {
 .board-gain.partial { color: var(--warn); }
 .board-score { font-weight: 700; color: var(--gold-bright); font-variant-numeric: tabular-nums; }
 
-.board-list { display: grid; gap: 0.45rem; margin-bottom: 1.5rem; }
+.board-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; margin-bottom: 1.5rem; }
 .board-row.big { padding: 0.8rem 0.9rem; background: var(--card); border-color: var(--line); font-size: 1rem; }
 .board-row.big.first { border-color: var(--gold); background: rgba(200, 170, 110, 0.09); }
 .board-row.big.me { border-color: var(--teal); }
@@ -890,7 +897,8 @@ kbd {
 .submit-status.ok { color: var(--ok); }
 .submit-status.error { color: var(--bad); }
 
-.review-list { display: grid; gap: 0.45rem; }
+/* minmax(0, ...): without it one long "You said ..." line widens every row past the screen. */
+.review-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
 
 .review-item {
     display: flex;
@@ -966,7 +974,7 @@ kbd {
 .close-btn:hover { color: var(--text); }
 
 .modal-tools { display: flex; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; padding: 0 1.25rem 0.75rem; }
-.modal-body { flex: 1; overflow-y: auto; padding: 0 1.25rem; display: grid; gap: 0.3rem; align-content: start; min-height: 150px; }
+.modal-body { flex: 1; overflow-y: auto; padding: 0 1.25rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; align-content: start; min-height: 150px; }
 .modal-note { padding: 0.75rem 1.25rem 1.1rem; font-size: 0.75rem; color: var(--muted); }
 .lb-empty { text-align: center; color: var(--muted); font-size: 0.92rem; padding: 1.5rem 0.5rem; }
 
@@ -1015,6 +1023,26 @@ kbd {
     .reveal-art, .reveal-champ { width: 60px; height: 60px; }
     .room-code { font-size: 2.1rem; }
     .modal-tools { justify-content: center; }
+    /* "You said ..." is the useful part of a review line: wrap it, don't cut it off. */
+    .review-sub { white-space: normal; }
+}
+
+/* A phone with its keyboard up leaves about half the screen. Tighten the quiz
+   so the champion field and its suggestions stay in view while typing. */
+@media (max-width: 480px) and (max-height: 560px) {
+    #quiz-screen { padding-top: 0.6rem; }
+    .quiz-top { margin-bottom: 0.25rem; }
+    .progress { margin-bottom: 0.5rem; }
+    .timer { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+    .timer-bar { flex: 1; }
+    .timer-info { margin-top: 0; gap: 0.6rem; }
+    .timer-value { font-size: 1.05rem; line-height: 1; }
+    .sound-card { padding: 0.5rem 0.8rem; gap: 0.5rem 0.8rem; margin-bottom: 0.6rem; }
+    .play-btn { width: 44px; height: 44px; }
+    .play-btn svg { transform: scale(0.8); }
+    .wave { height: 32px; }
+    .sound-status { margin-top: 0.1rem; }
+    .volume { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

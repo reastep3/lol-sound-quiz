@@ -19,6 +19,9 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  // Only found in the Android app's offline bundle (android/app/src/main/assets/www).
+  '.ogg': 'audio/ogg',
+  '.woff2': 'font/woff2',
 };
 
 http.createServer((req, res) => {

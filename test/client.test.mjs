@@ -1,10 +1,12 @@
 // Tests for the browser-side logic that doesn't need a browser:
-// champion search, question selection, scoring and the audio analysis.
+// champion search, question selection, scoring, the audio analysis,
+// and the offline bundle the Android app reads instead of the network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Roster, normalize, sampleQuestions, scoreAnswer } from '../js/data.js';
-import { analyzePcm, clipUrl } from '../js/audio.js';
+import { analyzePcm, slicePcm, clipUrl, bundledClipUrl } from '../js/audio.js';
+import { wakeServer } from '../js/net.js';
 import { CONFIG, POOLS } from '../js/config.js';
 
 const roster = new Roster('16.22.1', [
@@ -199,4 +201,100 @@ test('analyzePcm handles stereo and returns drawable peaks', () => {
   assert.equal(info.peaks.length, 96);
   assert.ok(info.peaks.every((p) => p > 0 && p <= 1));
   assert.ok(Math.max(...info.peaks) === 1);
+});
+
+test('slicePcm copies just the played part and fades both ends', () => {
+  const src = new Float32Array(SR * 2).fill(0.5);
+  const [out] = slicePcm([src], SR, { startSec: 0.5, endSec: 1.5, cut: false });
+  assert.equal(out.length, SR);
+  assert.equal(out[0], 0);                              // fades in from nothing...
+  near(out[Math.round(SR * 0.008)], 0.5, 1e-6, 'after the fade-in');
+  near(out[SR / 2], 0.5, 1e-6, 'middle');
+  assert.equal(out[SR - 1], 0);                         // ...and out to nothing
+  near(out[SR - 1 - Math.round(SR * 0.03)], 0.5, 1e-6, 'before the fade-out');
+  assert.equal(src[SR / 2], 0.5, 'the source is left alone');
+
+  // Stopping mid-sound gets a much longer fade.
+  const [cut] = slicePcm([src], SR, { startSec: 0, endSec: 1, cut: true });
+  assert.ok(cut[SR - 1 - Math.round(SR * 0.2)] < 0.3);
+});
+
+// ---- Offline bundle ---------------------------------------------------------
+
+const manifest = {
+  version: '16.22.1',
+  champions: [
+    { id: 'Ahri', key: '103', name: 'Ahri', clips: 'PQWER',
+      abilities: { P: { name: 'Essence Theft', icon: 'ability/Ahri_P.png' }, Q: { name: 'Orb of Deception', icon: 'ability/Ahri_Q.png' }, W: { name: 'Fox-Fire', icon: null }, E: { name: 'Charm', icon: 'ability/Ahri_E.png' }, R: { name: 'Spirit Rush', icon: 'ability/Ahri_R.png' } } },
+    { id: 'TahmKench', key: '223', name: 'Tahm Kench', clips: 'R', abilities: {} },   // only the ultimate has real sound
+    { id: 'Aatrox', key: '266', name: 'Aatrox', clips: 'P', abilities: {} },          // passive only
+    { id: 'Nobody', key: '999', name: 'Nobody', clips: '', abilities: {} },           // nothing usable
+  ],
+};
+
+test('a bundled roster answers everything without the network', async () => {
+  const bundled = Roster.fromBundle(manifest, 'offline');
+  const ahri = bundled.byId.get('Ahri');
+  assert.equal(bundled.patch, '16.22');
+  assert.equal(bundled.clipCount, 7);
+  assert.equal(bundled.iconUrl(ahri), 'offline/icons/champion/Ahri.png');
+  assert.deepEqual([...await bundled.clipSlots(ahri)], ['P', 'Q', 'W', 'E', 'R']);
+  assert.deepEqual([...await bundled.clipSlots(bundled.byId.get('TahmKench'))], ['R']);
+  const abilities = await bundled.abilities(ahri);
+  assert.deepEqual(abilities.Q, { name: 'Orb of Deception', icon: 'offline/icons/ability/Ahri_Q.png' });
+  assert.deepEqual(abilities.W, { name: 'Fox-Fire', icon: null });
+  assert.equal((await bundled.abilities(bundled.byId.get('Aatrox'))).Q, null);
+  assert.deepEqual(names(bundled.search('tahm')), ['Tahm Kench']);
+  assert.equal(bundledClipUrl('103', 'Q', 'offline'), 'offline/clips/103_Q.ogg');
+});
+
+test('a bundled roster only asks about sounds it has', () => {
+  const bundled = Roster.fromBundle(manifest, 'offline');
+  for (let run = 0; run < 200; run++) {
+    const basic = sampleQuestions(bundled, 4, 'basic');
+    assert.deepEqual(basic.questions.map((q) => q.champ.id).sort(), ['Ahri', 'TahmKench']);   // no QWER sound for the others
+    for (const q of [...basic.questions, ...basic.reserve.map(basic.pick)]) assert.ok(q.champ.clips.has(q.slot));
+    assert.equal(basic.questions.find((q) => q.champ.id === 'TahmKench').slot, 'R');
+
+    const all = sampleQuestions(bundled, 4, 'all');
+    assert.deepEqual(all.questions.map((q) => q.champ.id).sort(), ['Aatrox', 'Ahri', 'TahmKench']);
+    assert.equal(all.questions.find((q) => q.champ.id === 'Aatrox').slot, 'P');
+  }
+});
+
+test('a clip trimmed for the bundle is only measured in the app, never trimmed again', () => {
+  // A long clip that the build caps at 10 s. The kept part happens to end on
+  // three quiet seconds (the clip gets loud again later), so running the
+  // trimming a second time would cut the stored clip shorter than the website
+  // plays it. That is why the app asks for trim: false.
+  const raw = [signal([[0.5, null], [7, -20], [4, -50], [3, -20]])];
+  const first = analyzePcm(raw, SR);
+  near(first.endSec - first.startSec, 10, 0.01, 'the build caps it');
+  const stored = slicePcm(raw, SR, first);
+  assert.ok(analyzePcm(stored, SR).endSec < 9.8, 'a second trim would shorten it');
+
+  const inApp = analyzePcm(stored, SR, { ...CONFIG.audio, trim: false });
+  assert.equal(inApp.startSec, 0);
+  near(inApp.endSec, stored[0].length / SR, 1e-9, 'plays to the end');
+  assert.equal(inApp.cut, false);
+  near(inApp.gainDb, first.gainDb, 0.3, 'same levelling');
+  assert.equal(inApp.peaks.length, 96);
+  // Silence is still silence.
+  assert.equal(analyzePcm([new Float32Array(SR)], SR, { ...CONFIG.audio, trim: false }).silent, true);
+});
+
+test('wakeServer gives up at once when the device has no connection', async () => {
+  const had = Object.getOwnPropertyDescriptor(globalThis.navigator, 'onLine');
+  Object.defineProperty(globalThis.navigator, 'onLine', { value: false, configurable: true });
+  try {
+    const seen = [];
+    const started = Date.now();
+    const status = await wakeServer((state) => seen.push(state));
+    assert.deepEqual(status, { ok: false, outdated: false, offline: true });
+    assert.deepEqual(seen, ['nointernet']);
+    assert.ok(Date.now() - started < 200, 'no waiting, no request');
+  } finally {
+    if (had) Object.defineProperty(globalThis.navigator, 'onLine', had);
+    else delete globalThis.navigator.onLine;
+  }
 });

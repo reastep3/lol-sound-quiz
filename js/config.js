@@ -3,7 +3,20 @@
 const host = typeof location !== 'undefined' ? location.hostname : '';
 const isLocal = ['localhost', '127.0.0.1', '[::1]', ''].includes(host);
 
+// The Android app is this same site packed into an APK, with Riot's data and
+// every sound stored next to it (see android/README.md). Its build marks
+// index.html with <meta name="lsq-bundle" content="folder">.
+const bundleTag = typeof document !== 'undefined' ? document.querySelector('meta[name="lsq-bundle"]') : null;
+
 export const CONFIG = {
+  // Folder holding the offline bundle (manifest.json, icons/, clips/).
+  // null on the website, where everything is read live from Riot.
+  bundle: bundleTag?.content || null,
+
+  // Where invite links point. Inside the app, its own address means nothing
+  // to anyone else.
+  siteUrl: 'https://reastep3.github.io/lol-sound-quiz/',
+
   // Riot's Data Dragon: champion roster, ability names, icons.
   ddragon: 'https://ddragon.leagueoflegends.com',
 
