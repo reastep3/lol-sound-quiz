@@ -4,328 +4,332 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LoL Sound Quiz</title>
+    <meta name="description" content="Guess the League of Legends champion and ability from its in-game sound. Every current champion, solo or with friends.">
+    <meta name="theme-color" content="#060b16">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23060b16'/%3E%3Cg fill='%23c8aa6e'%3E%3Crect x='12' y='26' width='6' height='12' rx='3'/%3E%3Crect x='22' y='18' width='6' height='28' rx='3'/%3E%3Crect x='32' y='10' width='6' height='44' rx='3'/%3E%3Crect x='42' y='20' width='6' height='24' rx='3'/%3E%3Crect x='52' y='27' width='6' height='10' rx='3'/%3E%3C/g%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Beaufort+for+LOL:wght@700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://ddragon.leagueoflegends.com" crossorigin>
+    <link rel="preconnect" href="https://lol.dyn.riotcdn.net" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app">
+
         <!-- Loading -->
         <div id="loading-screen" class="screen active">
-            <div class="loading-spinner"></div>
-            <p class="loading-text">Loading champion data...</p>
+            <div class="loading-spinner" id="loading-spinner"></div>
+            <p class="loading-text" id="loading-text">Loading champions…</p>
+            <button id="loading-retry" class="btn btn-outline" hidden>Try again</button>
         </div>
 
-        <!-- Start Screen -->
+        <!-- Start -->
         <section id="start-screen" class="screen">
             <div class="container">
-                <div class="hero">
-                    <div class="logo-icon">
-                        <svg viewBox="0 0 64 64" width="64" height="64">
-                            <circle cx="32" cy="32" r="28" fill="none" stroke="#c89b3c" stroke-width="2"/>
-                            <path d="M20 22 L32 18 L44 22 L44 38 L32 46 L20 38Z" fill="none" stroke="#c89b3c" stroke-width="2" stroke-linejoin="round"/>
-                            <circle cx="32" cy="32" r="6" fill="#c89b3c" opacity="0.3"/>
-                            <circle cx="32" cy="32" r="3" fill="#c89b3c"/>
-                        </svg>
+                <header class="hero">
+                    <div class="logo" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span><span></span>
                     </div>
                     <h1 class="title">LoL Sound Quiz</h1>
-                    <p class="subtitle">Can you identify champion abilities by their sound?</p>
-                </div>
+                    <p class="subtitle">Hear an ability. Name the champion.</p>
+                </header>
 
-                <div class="card how-it-works">
-                    <h3>How It Works</h3>
-                    <div class="steps">
-                        <div class="step">
-                            <span class="step-num">1</span>
-                            <span>Listen to the ability sound effect</span>
-                        </div>
-                        <div class="step">
-                            <span class="step-num">2</span>
-                            <span>Type the champion's name</span>
-                        </div>
-                        <div class="step">
-                            <span class="step-num">3</span>
-                            <span>Select the ability key (Passive / Q / W / E / R)</span>
+                <div class="card setup">
+                    <div class="option-row">
+                        <span class="option-label" id="lbl-count">Questions</span>
+                        <div class="segmented" id="opt-count" role="group" aria-labelledby="lbl-count">
+                            <button type="button" class="seg-btn" data-value="5">5</button>
+                            <button type="button" class="seg-btn" data-value="10">10</button>
+                            <button type="button" class="seg-btn" data-value="20">20</button>
                         </div>
                     </div>
+                    <div class="option-row">
+                        <span class="option-label" id="lbl-pool">Abilities</span>
+                        <div class="segmented" id="opt-pool" role="group" aria-labelledby="lbl-pool">
+                            <button type="button" class="seg-btn" data-value="ult">Ultimates</button>
+                            <button type="button" class="seg-btn" data-value="basic">Q W E R</button>
+                            <button type="button" class="seg-btn" data-value="all">+ Passives</button>
+                        </div>
+                    </div>
+                    <div class="option-row">
+                        <span class="option-label" id="lbl-timed">Timer</span>
+                        <div class="segmented" id="opt-timed" role="group" aria-labelledby="lbl-timed">
+                            <button type="button" class="seg-btn" data-value="on">20 seconds</button>
+                            <button type="button" class="seg-btn" data-value="off">Off</button>
+                        </div>
+                    </div>
+                    <p class="option-hint" id="option-hint"></p>
                 </div>
 
-                <div class="card scoring-info">
-                    <h3>Scoring</h3>
+                <button id="start-btn" class="btn btn-primary btn-lg btn-block">Start Quiz</button>
+
+                <div class="button-row">
+                    <button id="multiplayer-btn" class="btn btn-outline">Play with Friends</button>
+                    <button id="leaderboard-btn" class="btn btn-outline">Leaderboard</button>
+                </div>
+
+                <details class="card how">
+                    <summary>How it works</summary>
+                    <ol class="steps">
+                        <li>A champion ability sound plays. Replay it as often as you like.</li>
+                        <li>Type the champion and pick them from the list.</li>
+                        <li>Choose which ability it was, then submit.</li>
+                    </ol>
                     <div class="score-rules">
-                        <div class="score-rule">
-                            <span class="score-badge perfect">1000</span>
-                            <span>Champion + Ability (max, faster = more)</span>
-                        </div>
-                        <div class="score-rule">
-                            <span class="score-badge partial">500</span>
-                            <span>Champion only (max, faster = more)</span>
-                        </div>
-                        <div class="score-rule">
-                            <span class="score-badge wrong">0</span>
-                            <span>Wrong champion</span>
-                        </div>
+                        <div class="score-rule"><span class="score-badge perfect">1000</span><span>Champion and ability. Faster answers score more.</span></div>
+                        <div class="score-rule"><span class="score-badge partial">500</span><span>Right champion, wrong ability.</span></div>
+                        <div class="score-rule"><span class="score-badge wrong">0</span><span>Wrong champion.</span></div>
                     </div>
-                </div>
+                    <p class="keys-note">Keys: <kbd>Space</kbd> replay, <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>P</kbd> ability, <kbd>Enter</kbd> submit.</p>
+                </details>
 
-                <div class="quiz-options">
-                    <label class="option-label">Questions</label>
-                    <div class="option-buttons" id="length-options">
-                        <button class="option-btn" data-value="5">5</button>
-                        <button class="option-btn active" data-value="10">10</button>
-                        <button class="option-btn" data-value="20">20</button>
-                    </div>
-                </div>
+                <p class="roster-note" id="roster-note"></p>
 
-                <button id="start-btn" class="btn btn-primary btn-lg">
-                    Start Quiz
-                </button>
-
-                <button id="multiplayer-btn" class="btn btn-outline btn-lg">
-                    Play with Friends
-                </button>
-
-                <button id="leaderboard-btn" class="btn btn-ghost btn-lg">
-                    Global Leaderboard
-                </button>
-
-                <p class="demo-note">
-                    Real ability SFX from Riot's official ability previews.
-                    117 abilities across 52 champions.
-                </p>
+                <footer class="legal">
+                    LoL Sound Quiz was created under Riot Games' "Legal Jibber Jabber" policy using assets owned by Riot Games.
+                    Riot Games does not endorse or sponsor this project.
+                </footer>
             </div>
         </section>
 
-        <!-- Lobby Screen -->
+        <!-- Multiplayer: create or join -->
         <section id="lobby-screen" class="screen">
-            <div class="container">
-                <div class="hero">
-                    <h1 class="title">Multiplayer</h1>
-                    <p class="subtitle">Play with friends in real-time</p>
+            <div class="container narrow">
+                <header class="hero compact">
+                    <h1 class="title">Play with Friends</h1>
+                    <p class="subtitle">Same sounds, same clock, up to 8 players.</p>
+                    <span class="status-pill" id="server-status" data-state="idle">Game server</span>
+                </header>
+
+                <div class="field">
+                    <label for="player-name">Your name</label>
+                    <input type="text" id="player-name" class="text-input" placeholder="Summoner name" maxlength="16" spellcheck="false" autocomplete="nickname">
                 </div>
 
-                <div class="lobby-name-input">
-                    <label for="player-name">Your Name</label>
-                    <input type="text" id="player-name" placeholder="Enter your name..." maxlength="16" spellcheck="false">
-                </div>
-
-                <div class="lobby-actions">
-                    <div class="card lobby-create">
-                        <h3>Create Lobby</h3>
-                        <p>Start a new game and invite friends</p>
-                        <div class="quiz-options lobby-options">
-                            <label class="option-label">Questions</label>
-                            <div class="option-buttons" id="mp-length-options">
-                                <button class="option-btn" data-value="5">5</button>
-                                <button class="option-btn active" data-value="10">10</button>
-                                <button class="option-btn" data-value="20">20</button>
-                            </div>
+                <div class="card">
+                    <h2 class="card-title">Create a lobby</h2>
+                    <div class="option-row">
+                        <span class="option-label" id="lbl-mp-count">Questions</span>
+                        <div class="segmented" id="mp-opt-count" role="group" aria-labelledby="lbl-mp-count">
+                            <button type="button" class="seg-btn" data-value="5">5</button>
+                            <button type="button" class="seg-btn" data-value="10">10</button>
+                            <button type="button" class="seg-btn" data-value="20">20</button>
                         </div>
-                        <button id="create-lobby-btn" class="btn btn-primary">Create Lobby</button>
                     </div>
-
-                    <div class="lobby-divider"><span>OR</span></div>
-
-                    <div class="card lobby-join">
-                        <h3>Join Lobby</h3>
-                        <p>Enter a room code to join</p>
-                        <div class="join-code-input">
-                            <input type="text" id="join-code" placeholder="ABCD" maxlength="4" spellcheck="false">
+                    <div class="option-row">
+                        <span class="option-label" id="lbl-mp-pool">Abilities</span>
+                        <div class="segmented" id="mp-opt-pool" role="group" aria-labelledby="lbl-mp-pool">
+                            <button type="button" class="seg-btn" data-value="ult">Ultimates</button>
+                            <button type="button" class="seg-btn" data-value="basic">Q W E R</button>
+                            <button type="button" class="seg-btn" data-value="all">+ Passives</button>
                         </div>
+                    </div>
+                    <button id="create-lobby-btn" class="btn btn-primary btn-block">Create Lobby</button>
+                </div>
+
+                <div class="divider"><span>or</span></div>
+
+                <div class="card">
+                    <h2 class="card-title">Join a lobby</h2>
+                    <div class="join-row">
+                        <input type="text" id="join-code" class="text-input code-input" placeholder="CODE" maxlength="4" spellcheck="false" autocomplete="off" autocapitalize="characters" aria-label="Room code">
                         <button id="join-lobby-btn" class="btn btn-primary">Join</button>
                     </div>
                 </div>
 
-                <button id="back-to-start-btn" class="btn btn-ghost">Back to Menu</button>
+                <button id="back-to-start-btn" class="btn btn-ghost btn-block">Back to menu</button>
             </div>
-            <div class="lobby-error" id="lobby-error"></div>
         </section>
 
-        <!-- Waiting Room -->
+        <!-- Multiplayer: waiting room -->
         <section id="waiting-screen" class="screen">
-            <div class="container">
-                <div class="waiting-header">
+            <div class="container narrow">
+                <header class="hero compact">
                     <h1 class="title">Lobby</h1>
-                    <div class="room-code-display">
-                        <span class="room-code-label">Room Code</span>
+                    <div class="room-code-box">
+                        <span class="room-code-label">Room code</span>
                         <span class="room-code" id="room-code">----</span>
-                        <button class="btn btn-ghost copy-code-btn" id="copy-code-btn">Copy</button>
                     </div>
-                </div>
+                    <div class="button-row tight">
+                        <button class="btn btn-outline btn-sm" id="copy-code-btn">Copy code</button>
+                        <button class="btn btn-outline btn-sm" id="copy-link-btn">Copy invite link</button>
+                    </div>
+                    <p class="subtitle small" id="lobby-settings"></p>
+                </header>
 
-                <div class="card player-list-card">
-                    <h3>Players (<span id="player-count">0</span>/8)</h3>
+                <div class="card">
+                    <h2 class="card-title">Players <span id="player-count" class="muted"></span></h2>
                     <div class="player-list" id="player-list"></div>
                 </div>
 
-                <button id="start-game-btn" class="btn btn-primary btn-lg" style="display:none">Start Game</button>
-                <p class="waiting-note" id="waiting-note">Waiting for the host to start...</p>
-
-                <button id="leave-lobby-btn" class="btn btn-ghost">Leave Lobby</button>
+                <button id="start-game-btn" class="btn btn-primary btn-lg btn-block" hidden>Start Game</button>
+                <p class="waiting-note" id="waiting-note"></p>
+                <button id="leave-lobby-btn" class="btn btn-ghost btn-block">Leave lobby</button>
             </div>
         </section>
 
-        <!-- Quiz Screen -->
+        <!-- Quiz -->
         <section id="quiz-screen" class="screen">
             <div class="container">
-                <!-- Header -->
-                <div class="quiz-header">
-                    <div class="quiz-progress-info">
-                        <span id="question-counter">Question 1 / 10</span>
-                        <span id="score-display">Score: 0</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progress-fill"></div>
-                    </div>
+                <div class="quiz-top">
+                    <span id="q-counter" class="q-counter">Question 1 / 10</span>
+                    <span id="q-score" class="q-score">0</span>
+                    <button id="quit-btn" class="btn btn-ghost btn-sm" title="Quit to menu">Quit</button>
                 </div>
+                <div class="progress" aria-hidden="true"><div class="progress-fill" id="q-progress"></div></div>
 
-                <!-- Multiplayer Timer (hidden in solo) -->
-                <div class="mp-status" id="mp-status" style="display:none">
-                    <div class="mp-timer-bar">
-                        <div class="mp-timer-fill" id="timer-fill"></div>
-                    </div>
-                    <div class="mp-timer-info">
-                        <span class="timer-value" id="timer-value">15</span>
+                <div class="timer" id="timer" hidden>
+                    <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+                    <div class="timer-info">
+                        <span class="timer-value" id="timer-value">20</span>
                         <span class="mp-answered" id="mp-answered"></span>
                     </div>
                 </div>
 
-                <!-- Sound Player -->
-                <div class="card sound-player" id="sound-player">
-                    <button class="play-btn" id="play-btn" title="Play Sound">
-                        <svg class="play-icon" viewBox="0 0 24 24" width="32" height="32">
-                            <polygon points="6,4 20,12 6,20" fill="currentColor"/>
-                        </svg>
-                        <svg class="pause-icon" viewBox="0 0 24 24" width="32" height="32" style="display:none">
-                            <rect x="5" y="4" width="4" height="16" fill="currentColor"/>
-                            <rect x="15" y="4" width="4" height="16" fill="currentColor"/>
-                        </svg>
+                <div class="card sound-card" id="sound-card" data-state="loading">
+                    <button class="play-btn" id="play-btn" type="button" aria-label="Play sound">
+                        <svg class="icon-play" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>
+                        <svg class="icon-stop" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+                        <span class="icon-spin" aria-hidden="true"></span>
                     </button>
-                    <div class="waveform" id="waveform">
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-                        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                    <div class="wave-wrap">
+                        <canvas id="wave" class="wave" aria-hidden="true"></canvas>
+                        <div class="sound-status" id="sound-status" role="status" aria-live="polite">Loading sound…</div>
                     </div>
-                    <span class="play-count" id="play-count">Click to play</span>
+                    <label class="volume" title="Volume">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" fill="currentColor"/></svg>
+                        <input type="range" id="volume" min="0" max="1" step="0.05" aria-label="Volume">
+                    </label>
                 </div>
 
-                <!-- Answer Form -->
-                <div class="answer-form">
-                    <div class="input-group">
-                        <label for="champion-input">Champion</label>
-                        <div class="autocomplete-wrapper">
-                            <input type="text" id="champion-input" placeholder="Type champion name..." autocomplete="off" spellcheck="false">
-                            <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+                <div class="load-error" id="load-error" hidden>
+                    <p id="load-error-text">Couldn't load the sound. Check your connection.</p>
+                    <div class="button-row tight">
+                        <button class="btn btn-primary btn-sm" id="load-retry-btn">Try again</button>
+                    </div>
+                </div>
+
+                <form class="answer-form" id="answer-form" autocomplete="off" tabindex="-1">
+                    <div class="field">
+                        <label for="champ-input">Champion</label>
+                        <div class="combo" id="combo">
+                            <img class="combo-icon" id="combo-icon" alt="" hidden>
+                            <input type="text" id="champ-input" class="text-input" placeholder="Start typing a champion…" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                   role="combobox" aria-expanded="false" aria-controls="champ-list" aria-autocomplete="list">
+                            <div class="combo-list" id="champ-list" role="listbox"></div>
                         </div>
                     </div>
 
-                    <div class="input-group">
-                        <label>Ability</label>
-                        <div class="ability-buttons" id="ability-buttons">
-                            <button class="ability-btn" data-key="Passive">P</button>
-                            <button class="ability-btn" data-key="Q">Q</button>
-                            <button class="ability-btn" data-key="W">W</button>
-                            <button class="ability-btn" data-key="E">E</button>
-                            <button class="ability-btn" data-key="R">R</button>
+                    <div class="field" id="ability-field">
+                        <span class="field-label" id="lbl-ability">Ability</span>
+                        <div class="ability-row" id="ability-row" role="group" aria-labelledby="lbl-ability">
+                            <button type="button" class="ability-btn" data-slot="P">P<small>passive</small></button>
+                            <button type="button" class="ability-btn" data-slot="Q">Q</button>
+                            <button type="button" class="ability-btn" data-slot="W">W</button>
+                            <button type="button" class="ability-btn" data-slot="E">E</button>
+                            <button type="button" class="ability-btn" data-slot="R">R<small>ultimate</small></button>
                         </div>
                     </div>
 
-                    <button id="submit-btn" class="btn btn-primary" disabled>
-                        Submit Answer
-                    </button>
+                    <button type="submit" id="submit-btn" class="btn btn-primary btn-block" disabled>Submit answer</button>
+                    <button type="button" id="skip-btn" class="btn btn-ghost btn-block">Skip</button>
+                    <p class="locked-note" id="locked-note" hidden></p>
+                </form>
+            </div>
 
-                    <button id="skip-btn" class="btn btn-ghost">
-                        Skip
-                    </button>
-                </div>
-
-                <!-- Feedback Overlay -->
-                <div class="feedback-overlay" id="feedback-overlay">
-                    <div class="feedback-card" id="feedback-card">
-                        <div class="feedback-icon" id="feedback-icon"></div>
-                        <h2 id="feedback-title"></h2>
-                        <div class="feedback-details" id="feedback-details"></div>
-                        <div class="feedback-score" id="feedback-score"></div>
-                        <button class="btn btn-primary" id="next-btn">Next Question</button>
+            <!-- Answer reveal -->
+            <div class="overlay" id="feedback" role="dialog" aria-modal="true" aria-labelledby="fb-title">
+                <div class="modal feedback-card" id="fb-card">
+                    <h2 id="fb-title"></h2>
+                    <div class="reveal" id="fb-reveal"></div>
+                    <p class="fb-yours" id="fb-yours"></p>
+                    <div class="fb-points" id="fb-points"></div>
+                    <div class="reveal-board" id="fb-board" hidden></div>
+                    <div class="fb-actions">
+                        <button type="button" class="btn btn-outline" id="fb-replay">Replay sound</button>
+                        <button type="button" class="btn btn-primary" id="fb-next">Next question</button>
                     </div>
+                    <p class="fb-countdown" id="fb-countdown" hidden></p>
                 </div>
             </div>
         </section>
 
-        <!-- Results Screen -->
+        <!-- Solo results -->
         <section id="results-screen" class="screen">
             <div class="container">
-                <div class="results-header">
-                    <h1>Quiz Complete</h1>
-                    <div class="final-score" id="final-score">
-                        <span class="score-number" id="final-score-number">0</span>
-                        <span class="score-total" id="final-score-total">/ 20</span>
+                <header class="results-header">
+                    <p class="results-kicker" id="results-kicker">Quiz complete</p>
+                    <div class="final-score">
+                        <span class="score-number" id="final-score">0</span>
+                        <span class="score-total" id="final-total">/ 10,000</span>
                     </div>
-                    <div class="score-percent" id="score-percent">0%</div>
-                    <div class="score-stars" id="score-stars"></div>
-                    <p class="score-message" id="score-message"></p>
-                </div>
-
-                <div class="results-breakdown" id="results-breakdown">
-                    <h3>Question Review</h3>
-                    <div class="results-list" id="results-list"></div>
-                </div>
-
-                <div class="submit-score-section" id="submit-score-section">
-                    <h3>Submit to Leaderboard</h3>
-                    <div class="submit-score-form">
-                        <input type="text" id="score-name-input" placeholder="Your name..." maxlength="16" spellcheck="false">
-                        <button class="btn btn-primary" id="submit-score-btn">Submit Score</button>
-                    </div>
-                    <p class="submit-status" id="submit-status"></p>
-                </div>
+                    <p class="rank-title" id="rank-title"></p>
+                    <p class="results-stats" id="results-stats"></p>
+                    <p class="best-badge" id="best-badge" hidden>New personal best</p>
+                </header>
 
                 <div class="results-actions">
-                    <button class="btn btn-primary btn-lg" id="play-again-btn">Play Again</button>
+                    <button class="btn btn-primary btn-lg" id="play-again-btn">Play again</button>
+                    <button class="btn btn-outline btn-lg" id="menu-btn">Menu</button>
                 </div>
+
+                <div class="card submit-card" id="submit-card">
+                    <h2 class="card-title">Post to the global leaderboard</h2>
+                    <div class="join-row">
+                        <input type="text" id="score-name" class="text-input" placeholder="Your name" maxlength="16" spellcheck="false" aria-label="Name for the leaderboard">
+                        <button class="btn btn-primary" id="submit-score-btn">Post score</button>
+                    </div>
+                    <p class="submit-status" id="submit-status" role="status"></p>
+                </div>
+
+                <h2 class="section-title">Review</h2>
+                <div class="review-list" id="review-list"></div>
             </div>
         </section>
 
-        <!-- Multiplayer Results -->
+        <!-- Multiplayer results -->
         <section id="mp-results-screen" class="screen">
-            <div class="container">
-                <div class="results-header">
-                    <h1>Game Over</h1>
-                    <div class="winner-announcement" id="winner-announcement"></div>
-                </div>
-
-                <div class="leaderboard" id="leaderboard">
-                    <h3>Leaderboard</h3>
-                    <div class="leaderboard-list" id="leaderboard-list"></div>
-                </div>
-
-                <div class="results-actions">
-                    <button class="btn btn-primary btn-lg" id="mp-play-again-btn" style="display:none">Play Again</button>
-                    <button class="btn btn-ghost" id="mp-leave-btn">Leave Lobby</button>
+            <div class="container narrow">
+                <header class="results-header">
+                    <p class="results-kicker">Game over</p>
+                    <div class="winner" id="winner"></div>
+                </header>
+                <div class="board-list" id="mp-board"></div>
+                <div class="results-actions column">
+                    <button class="btn btn-primary btn-lg btn-block" id="mp-play-again-btn" hidden>Play again</button>
+                    <p class="waiting-note" id="mp-results-note"></p>
+                    <button class="btn btn-ghost btn-block" id="mp-leave-btn">Leave lobby</button>
                 </div>
             </div>
         </section>
-        <!-- Leaderboard Overlay -->
-        <div class="leaderboard-overlay" id="leaderboard-overlay">
-            <div class="leaderboard-modal">
-                <div class="leaderboard-modal-header">
-                    <h2>Global Leaderboard</h2>
-                    <button class="close-btn" id="close-leaderboard-btn">&times;</button>
+
+        <!-- Leaderboard -->
+        <div class="overlay" id="leaderboard" role="dialog" aria-modal="true" aria-labelledby="lb-title">
+            <div class="modal leaderboard-modal">
+                <div class="modal-header">
+                    <h2 id="lb-title">Leaderboard</h2>
+                    <button class="close-btn" id="lb-close" aria-label="Close">&times;</button>
                 </div>
-                <div class="leaderboard-modal-content" id="leaderboard-content">
-                    <div class="loading-spinner"></div>
-                    <p class="loading-text">Loading...</p>
+                <div class="modal-tools">
+                    <div class="segmented" id="lb-scope" role="group" aria-label="Which scores">
+                        <button type="button" class="seg-btn" data-value="global">Global</button>
+                        <button type="button" class="seg-btn" data-value="mine">Your games</button>
+                    </div>
+                    <div class="segmented" id="lb-count" role="group" aria-label="Quiz length">
+                        <button type="button" class="seg-btn" data-value="5">5</button>
+                        <button type="button" class="seg-btn" data-value="10">10</button>
+                        <button type="button" class="seg-btn" data-value="20">20</button>
+                    </div>
                 </div>
+                <div class="modal-body" id="lb-body"></div>
+                <p class="modal-note" id="lb-note"></p>
             </div>
         </div>
+
+        <div class="toast" id="toast" role="alert"></div>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>
