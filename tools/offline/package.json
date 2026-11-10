@@ -1,0 +1,10 @@
+{
+  "name": "lol-sound-quiz-offline-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds the offline data and sound bundle that ships inside the Android app.",
+  "type": "module",
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}

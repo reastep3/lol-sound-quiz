@@ -9,6 +9,7 @@ Hear a League of Legends ability, name the champion and which ability it was.
 - Solo quizzes of 5, 10 or 20 questions: ultimates only, Q/W/E/R, or everything including passives. Timed (20 seconds, faster answers score more) or untimed practice.
 - Multiplayer lobbies for up to 8 players with a shared clock.
 - Personal bests saved in the browser, plus a global leaderboard.
+- An [Android app](android/README.md) with every sound stored on the phone, for playing with no connection at all.
 
 Keyboard: type a champion and press <kbd>Enter</kbd> to pick the top match, <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>P</kbd> to choose the ability, <kbd>Enter</kbd> to submit, <kbd>Space</kbd> to replay.
 
@@ -27,6 +28,8 @@ Those clips are video files and are not consistent with each other: measured acr
 If a clip cannot be loaded, the game never substitutes another sound. It swaps the question, or tells you it could not load.
 
 The next two sounds are fetched in the background while you answer, so questions after the first start immediately.
+
+The Android app does steps 1 to 4 once, when it is built, and ships the results; see [android/README.md](android/README.md).
 
 | What | Source |
 | --- | --- |
@@ -58,7 +61,7 @@ On `localhost` the site talks to `localhost:8080` automatically.
 cd server && npm install && cd .. && npm test
 ```
 
-The suite covers champion search, question selection, scoring, the audio analysis (with synthetic signals), and the server end to end: it starts a real server, connects WebSocket clients and plays whole games against a fake of Riot's endpoints.
+The suite covers champion search, question selection, scoring, the audio analysis (with synthetic signals), the offline bundle the Android app reads, and the server end to end: it starts a real server, connects WebSocket clients and plays whole games against a fake of Riot's endpoints.
 
 ## Deploying
 
@@ -80,6 +83,8 @@ js/storage.js            settings and personal bests (localStorage)
 server/app.js            lobbies, clock, scoring, leaderboard
 test/                    node:test suites
 tools/dev-server.mjs     static file server for local development
+tools/offline/build.mjs  downloads and prepares the Android app's offline bundle
+android/                 the Android app: a WebView around this same site
 ```
 
 ## Known limits

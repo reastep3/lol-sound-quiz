@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <!-- Same navy as the page, so there is no white flash while it loads. -->
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:windowSplashScreenBackground">@color/background</item>
+        <item name="android:colorAccent">@color/gold</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <!-- No grey strip behind the three-button navigation bar. -->
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+</resources>

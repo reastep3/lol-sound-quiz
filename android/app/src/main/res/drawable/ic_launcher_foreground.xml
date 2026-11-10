@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Five sound-level bars: the same mark as the site's favicon, drawn inside the
+     adaptive icon's safe zone (the middle 66 of 108). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#C8AA6E" android:pathData="M28.5,50.5 a3.5,3.5 0 0 1 7,0 v7 a3.5,3.5 0 0 1 -7,0 z" />
+    <path android:fillColor="#C8AA6E" android:pathData="M39.5,41.5 a3.5,3.5 0 0 1 7,0 v25 a3.5,3.5 0 0 1 -7,0 z" />
+    <path android:fillColor="#C8AA6E" android:pathData="M50.5,32.5 a3.5,3.5 0 0 1 7,0 v43 a3.5,3.5 0 0 1 -7,0 z" />
+    <path android:fillColor="#C8AA6E" android:pathData="M61.5,44 a3.5,3.5 0 0 1 7,0 v20 a3.5,3.5 0 0 1 -7,0 z" />
+    <path android:fillColor="#C8AA6E" android:pathData="M72.5,51.5 a3.5,3.5 0 0 1 7,0 v5 a3.5,3.5 0 0 1 -7,0 z" />
+</vector>
