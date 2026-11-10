@@ -1,0 +1,15 @@
+{
+  "name": "lol-sound-quiz",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Guess the League of Legends champion and ability from its in-game sound.",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/dev-server.mjs",
+    "server": "node server/index.js",
+    "test": "node --test test/client.test.mjs test/server.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
